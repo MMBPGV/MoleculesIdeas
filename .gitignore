@@ -214,6 +214,16 @@ tempCodeRunnerFile.py
 # Marimo
 marimo/_static/
 marimo/_lsp/
+# ==========================================================
+# Chemistry Lab - local development files
+# ==========================================================
+
+# Local files excluded from the public repository
+github_ausschluss/
+
+# Generated chemistry data
+daten/neuheit_cache.sqlite
+daten/gedaechtnis/
 __marimo__/
 
 # Streamlit
