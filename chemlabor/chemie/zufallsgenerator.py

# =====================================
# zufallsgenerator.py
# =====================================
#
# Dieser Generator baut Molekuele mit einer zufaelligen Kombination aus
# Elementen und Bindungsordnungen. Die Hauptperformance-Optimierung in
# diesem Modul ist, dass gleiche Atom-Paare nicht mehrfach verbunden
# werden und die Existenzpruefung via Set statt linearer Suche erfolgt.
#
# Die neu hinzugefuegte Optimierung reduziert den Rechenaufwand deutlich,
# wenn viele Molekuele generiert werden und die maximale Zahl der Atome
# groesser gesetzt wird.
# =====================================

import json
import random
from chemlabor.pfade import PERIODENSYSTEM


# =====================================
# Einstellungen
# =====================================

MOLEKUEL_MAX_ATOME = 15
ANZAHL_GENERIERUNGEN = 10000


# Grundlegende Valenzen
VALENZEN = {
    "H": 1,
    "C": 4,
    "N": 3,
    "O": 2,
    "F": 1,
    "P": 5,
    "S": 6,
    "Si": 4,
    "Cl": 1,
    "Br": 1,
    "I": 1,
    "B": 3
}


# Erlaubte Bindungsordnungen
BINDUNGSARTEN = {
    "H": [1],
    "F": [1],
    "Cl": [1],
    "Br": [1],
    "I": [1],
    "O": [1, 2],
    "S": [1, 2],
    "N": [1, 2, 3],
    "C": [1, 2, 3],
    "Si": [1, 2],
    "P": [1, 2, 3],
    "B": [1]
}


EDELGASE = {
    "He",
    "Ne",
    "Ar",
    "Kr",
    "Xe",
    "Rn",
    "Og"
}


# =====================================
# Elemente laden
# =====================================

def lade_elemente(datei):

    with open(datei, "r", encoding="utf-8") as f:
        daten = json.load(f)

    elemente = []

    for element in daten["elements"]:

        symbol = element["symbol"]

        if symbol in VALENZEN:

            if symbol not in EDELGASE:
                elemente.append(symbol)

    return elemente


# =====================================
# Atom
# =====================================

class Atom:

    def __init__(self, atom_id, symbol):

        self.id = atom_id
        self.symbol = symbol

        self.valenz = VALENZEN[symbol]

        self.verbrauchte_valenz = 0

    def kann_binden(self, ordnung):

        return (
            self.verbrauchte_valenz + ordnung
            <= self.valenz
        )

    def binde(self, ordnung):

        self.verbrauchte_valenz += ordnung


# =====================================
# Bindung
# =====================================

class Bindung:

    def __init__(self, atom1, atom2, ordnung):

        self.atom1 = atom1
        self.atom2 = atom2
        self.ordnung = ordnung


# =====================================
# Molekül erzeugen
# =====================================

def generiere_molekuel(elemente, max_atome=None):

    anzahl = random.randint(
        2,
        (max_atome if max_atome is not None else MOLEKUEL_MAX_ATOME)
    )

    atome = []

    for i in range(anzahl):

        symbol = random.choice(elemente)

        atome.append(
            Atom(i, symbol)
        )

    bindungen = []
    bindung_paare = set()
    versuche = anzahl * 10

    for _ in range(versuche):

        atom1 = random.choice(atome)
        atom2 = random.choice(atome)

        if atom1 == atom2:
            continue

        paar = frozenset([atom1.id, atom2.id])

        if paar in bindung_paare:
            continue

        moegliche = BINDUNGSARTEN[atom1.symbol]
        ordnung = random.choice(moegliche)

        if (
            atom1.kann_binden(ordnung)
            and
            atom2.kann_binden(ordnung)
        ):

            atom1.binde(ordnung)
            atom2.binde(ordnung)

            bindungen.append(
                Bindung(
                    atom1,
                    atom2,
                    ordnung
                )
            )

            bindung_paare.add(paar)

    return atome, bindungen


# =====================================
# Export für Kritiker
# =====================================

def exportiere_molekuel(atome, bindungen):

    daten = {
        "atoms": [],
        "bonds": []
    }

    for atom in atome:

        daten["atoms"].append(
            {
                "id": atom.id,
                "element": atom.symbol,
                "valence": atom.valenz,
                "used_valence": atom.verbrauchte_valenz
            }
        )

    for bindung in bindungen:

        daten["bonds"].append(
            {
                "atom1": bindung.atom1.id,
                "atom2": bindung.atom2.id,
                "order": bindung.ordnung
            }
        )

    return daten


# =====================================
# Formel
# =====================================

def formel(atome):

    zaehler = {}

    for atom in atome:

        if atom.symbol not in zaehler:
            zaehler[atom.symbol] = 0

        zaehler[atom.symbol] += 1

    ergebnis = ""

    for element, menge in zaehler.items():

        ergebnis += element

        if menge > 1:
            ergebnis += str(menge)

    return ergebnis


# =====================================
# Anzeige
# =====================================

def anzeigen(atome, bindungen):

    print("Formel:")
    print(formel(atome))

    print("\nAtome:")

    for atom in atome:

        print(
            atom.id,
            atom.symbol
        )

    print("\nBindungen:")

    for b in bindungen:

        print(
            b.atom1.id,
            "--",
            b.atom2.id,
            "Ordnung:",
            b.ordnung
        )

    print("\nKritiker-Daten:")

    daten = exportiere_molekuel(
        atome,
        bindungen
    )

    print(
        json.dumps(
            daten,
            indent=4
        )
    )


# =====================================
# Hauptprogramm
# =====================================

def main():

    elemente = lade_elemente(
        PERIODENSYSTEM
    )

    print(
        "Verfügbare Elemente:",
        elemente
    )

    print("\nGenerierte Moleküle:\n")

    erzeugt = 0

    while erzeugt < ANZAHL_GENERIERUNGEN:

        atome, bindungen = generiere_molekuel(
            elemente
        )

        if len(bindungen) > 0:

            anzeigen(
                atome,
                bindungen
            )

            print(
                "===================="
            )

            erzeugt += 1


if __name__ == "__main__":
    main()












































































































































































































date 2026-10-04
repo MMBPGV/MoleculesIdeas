@@ -1,0 +1,1803 @@
+# ==========================================================
+# konstruktor.py
+# ==========================================================
+#
+# KIKonstruktor: baut Molekuele SCHRITT FUER SCHRITT (Atom fuer Atom,
+# Bindung fuer Bindung), gesteuert von den in KIGedaechtnis gelernten
+# Mustern - im Unterschied zu idk.generiere_molekuel(), das ein
+# komplettes Zufallsmolekuel wuerfelt und ERST HINTERHER vom Kritiker
+# bewerten laesst ("generate-then-filter").
+#
+# Zutaten:
+#
+#   1. Bei jeder Entscheidung (naechstes Element, naechste Bindung)
+#      werden die Kandidaten nach ihrer gelernten Durchschnitts-
+#      qualitaet gewichtet (KIGedaechtnis._element_qualitaet /
+#      .bindungsmuster, dieselbe Bayes-Glaettung wie in
+#      KIGenerator.erschaffe_molekuel - hier aber SCHRITTWEISE
+#      angewendet, nicht nur am Ende beim Best-of-N-Vergleich).
+#
+#   2. Jeder Bindungsschritt wird SOFORT gegen RDKit geprueft (siehe
+#      rdkit_bruecke.py). Schlaegt die Pruefung fehl (z.B. Valenz
+#      ueberschritten), wird der Schritt zurueckgenommen
+#      (Backtracking) und ein anderer Kandidat versucht.
+#
+# Aenderungen gegenueber der ersten Version:
+#
+#   - Das Grundgeruest besteht nur noch aus EINFACHbindungen (wie in
+#     KIGenerator._verbinde): eine gleich zu Beginn vergebene Doppel-/
+#     Dreifachbindung (O=O, N#N) oder ein H-H-Paar sperrte vorher haeufig
+#     alle weiteren Atome aus und liess den ganzen Bau scheitern.
+#     Ausserdem werden die Atome nach Valenz absteigend angeordnet
+#     (mehrbindige zuerst, H/Halogene zuletzt), damit spaetere Atome
+#     immer einen Partner mit freier Valenz vorfinden.
+#   - Findet ein Atom trotzdem keinen Partner mehr, wird das Molekuel
+#     an dieser Stelle GEKUERZT (die restlichen Atome entfallen), statt
+#     den kompletten Bau als gescheitert zu melden.
+#   - Zusatzbindungen koennen jetzt auch BESTEHENDE Bindungen zu Doppel-/
+#     Dreifachbindungen hochstufen (vorher entstanden Mehrfachbindungen
+#     nur im Grundgeruest oder beim Ringschluss).
+#   - Neu: Auffuellen offener Valenzen mit einwertigen Atomen (H,
+#     Halogene), gewichtet nach gelernter Bindungsqualitaet. Ohne das
+#     blieben fast alle Molekuele voller Radikale (offene Valenzen),
+#     die der Kritiker hart bestraft. Das Auffuellen respektiert
+#     max_atome (die Gesamtzahl der Atome ueberschreitet den Wert nie)
+#     und fuellt P/S nur bis zur ueblichen Valenz (3 bzw. 2). Abschaltbar
+#     ueber fuelle_auf=False.
+#
+# Ergebnis: KIKonstruktor.baue_molekuel() liefert entweder ein
+# vollstaendiges, laut RDKit gueltiges Molekuel, oder gibt ehrlich auf
+# (erfolgreich=False).
+# ==========================================================
+
+
+import random
+
+from chemlabor.chemie import rdkit_bruecke as rb
+from chemlabor.chemie import zufallsgenerator as idk
+
+# Uebliche Valenz fuer Elemente, die laut idk.VALENZEN eine deutlich
+# hoehere MAXIMALvalenz haben - nur relevant fuer das Auffuellen.
+_AUFFUELL_VALENZ = {"P": 3, "S": 2}
+
+
+class KIKonstruktor:
+
+    def __init__(
+            self,
+            elemente,
+            gedaechtnis,
+            max_atome=15,
+            max_zusatzbindungen_versuche=None,
+            mindestgewicht=5.0,
+            fuelle_auf=True
+    ):
+
+        self.elemente = elemente
+        self.gedaechtnis = gedaechtnis
+        self.max_atome = max_atome
+
+        # None => an anzahl_atome gekoppelt (siehe baue_molekuel) -
+        # groessere Molekuele bekommen automatisch mehr Versuche fuer
+        # zusaetzliche Bindungen (Ringe, Mehrfachbindungen).
+        self.max_zusatzbindungen_versuche = max_zusatzbindungen_versuche
+
+        # Gewichts-Untergrenze fuer noch nie gesehene oder schlecht
+        # bewertete Elemente/Muster - ohne das wuerde die Exploration
+        # nach einiger Lernzeit komplett auf die bisher besten paar
+        # Muster einrasten und nie mehr etwas Neues probieren.
+        self.mindestgewicht = mindestgewicht
+
+        # Offene Valenzen am Ende mit einwertigen Atomen auffuellen.
+        self.fuelle_auf = fuelle_auf
+
+    # ------------------------------------------------------
+    # Gelernte Gewichte
+    # ------------------------------------------------------
+
+    def _elementgewicht(self, element):
+
+        summe, anzahl = self.gedaechtnis._element_qualitaet.get(
+            element, (0.0, 0)
+        )
+
+        qualitaet = self.gedaechtnis._glaetten(summe, anzahl)
+
+        return max(qualitaet, self.mindestgewicht)
+
+    def _bindungsgewicht(self, element1, element2, ordnung):
+
+        muster = tuple(sorted([element1, element2])) + (ordnung,)
+
+        summe, anzahl = self.gedaechtnis.bindungsmuster.get(
+            muster, (0.0, 0)
+        )
+
+        qualitaet = self.gedaechtnis._glaetten(summe, anzahl)
+
+        return max(qualitaet, self.mindestgewicht)
+
+    def _gewichtete_wahl(self, kandidaten, gewichte):
+        """kandidaten: Liste beliebiger Objekte. gewichte: parallele
+        Liste von Zahlen > 0. Gibt ALLE Kandidaten in einer zufaelligen,
+        gewichteten Reihenfolge zurueck (Efraimidis-Spirakis:
+        u ** (1/gewicht) mit u ~ U(0,1), absteigend sortiert) - so kann
+        der Aufrufer bei einem RDKit-Fehlschlag einfach zum naechsten in
+        der Liste weitergehen, ohne dass ein Kandidat zweimal probiert
+        wird."""
+
+        bewertet = [
+            (random.random() ** (1.0 / gewicht), kandidat)
+            for kandidat, gewicht in zip(kandidaten, gewichte)
+        ]
+
+        bewertet.sort(key=lambda paar: paar[0], reverse=True)
+
+        return [kandidat for _bewertung, kandidat in bewertet]
+
+    # ------------------------------------------------------
+    # Bau
+    # ------------------------------------------------------
+
+    def baue_molekuel(self):
+        """Rueckgabe: (molekuel_dict, erfolgreich: bool).
+
+        molekuel_dict ist bei erfolgreich=False das letzte erreichte
+        (unvollstaendige oder chemisch fragwuerdige) Teilergebnis -
+        nuetzlich zum Debuggen, sollte vom Aufrufer aber NICHT als
+        echtes Experiment gezaehlt werden (siehe ChemLabor-Integration
+        in labor.py)."""
+
+        anzahl_atome = random.randint(2, self.max_atome)
+
+        elementgewichte = {
+            element: self._elementgewicht(element)
+            for element in self.elemente
+        }
+
+        symbole = [
+            self._gewichtete_wahl(
+                self.elemente,
+                [elementgewichte[e] for e in self.elemente]
+            )[0]
+            for _ in range(anzahl_atome)
+        ]
+
+        # Mehrbindige Atome zuerst (stabile Sortierung: die zufaellige
+        # Reihenfolge innerhalb gleicher Valenz bleibt erhalten).
+        symbole.sort(key=lambda s: idk.VALENZEN[s], reverse=True)
+
+        atome = [
+            {
+                "id": i,
+                "symbol": symbol,
+                "valenz": idk.VALENZEN[symbol],
+                "verbraucht": 0,
+            }
+            for i, symbol in enumerate(symbole)
+        ]
+
+        bindungen = []
+        bindung_paare = set()
+
+        # --------------------------------------------------
+        # Schritt 1: Grundgeruest - jedes Atom ab dem zweiten wird mit
+        # GENAU EINEM bereits im Molekuel vorhandenen Atom ueber eine
+        # EINFACHbindung verbunden. Garantiert einen zusammenhaengenden
+        # Graphen. Findet ein Atom keinen Partner mehr, wird das
+        # Molekuel hier gekuerzt.
+        # --------------------------------------------------
+
+        i = 1
+
+        while i < len(atome):
+
+            if not self._verbinde_neues_atom(
+                atome, bindungen, bindung_paare, i
+            ):
+                del atome[i:]
+                break
+
+            i += 1
+
+        if len(atome) < 2:
+
+            return self._exportiere(atome, bindungen), False
+
+        # --------------------------------------------------
+        # Schritt 2: Zusatzbindungen (Ringe, Hochstufen zu Mehrfach-
+        # bindungen) - jeder Versuch ist unabhaengig; scheitert einer,
+        # wird er einfach uebersprungen.
+        # --------------------------------------------------
+
+        versuche = (
+            self.max_zusatzbindungen_versuche
+            if self.max_zusatzbindungen_versuche is not None
+            else len(atome)
+        )
+
+        for _ in range(versuche):
+
+            self._versuche_zusatzbindung(
+                atome, bindungen, bindung_paare
+            )
+
+        # --------------------------------------------------
+        # Schritt 3: offene Valenzen mit H/Halogenen auffuellen.
+        # --------------------------------------------------
+
+        if self.fuelle_auf:
+
+            self._fuelle_auf(atome, bindungen, bindung_paare)
+
+        molekuel = self._exportiere(atome, bindungen)
+
+        gueltig = rb.ist_gueltig(molekuel)
+
+        return molekuel, gueltig
+
+    def _verbinde_neues_atom(
+        self, atome, bindungen, bindung_paare, neuer_index
+    ):
+        """Verbindet atome[neuer_index] ueber eine Einfachbindung mit
+        GENAU EINEM Atom aus atome[:neuer_index], gewichtet nach
+        gelernter Bindungsqualitaet und mit RDKit-Backtracking.
+        Rueckgabe: ob es gelungen ist."""
+
+        neues_atom = atome[neuer_index]
+
+        kandidaten = []
+        gewichte = []
+
+        for ziel_index in range(neuer_index):
+
+            ziel_atom = atome[ziel_index]
+
+            if (
+                neues_atom["verbraucht"] + 1 > neues_atom["valenz"]
+                or ziel_atom["verbraucht"] + 1 > ziel_atom["valenz"]
+            ):
+                continue
+            kandidaten.append(ziel_index)
+
+            gewichte.append(
+                self._bindungsgewicht(
+                    neues_atom["symbol"], ziel_atom["symbol"], 1
+                )
+            )
+
+        if not kandidaten:
+            return False
+
+        for ziel_index in self._gewichtete_wahl(kandidaten, gewichte):
+
+            if self._probiere_bindung(
+                atome, bindungen, bindung_paare,
+                neuer_index, ziel_index, 1
+            ):
+                return True
+
+        return False
+
+    def _versuche_zusatzbindung(self, atome, bindungen, bindung_paare):
+        """Ein EINZELNER Versuch, das Molekuel um eine Bindung zu
+        erweitern: entweder ein Ringschluss/eine neue Bindung zwischen
+        noch nicht verbundenen Atomen, oder das Hochstufen einer
+        bestehenden Bindung um eine Ordnung (Einfach -> Doppel ->
+        Dreifach). Kandidaten werden nach gelernter Qualitaet gewichtet
+        und mit RDKit-Backtracking durchprobiert."""
+
+        bindung_nach_paar = {
+            frozenset([b["atom1"], b["atom2"]]): b for b in bindungen
+        }
+
+        kandidaten = []
+        gewichte = []
+
+        for i, atom1 in enumerate(atome):
+
+            if atom1["verbraucht"] >= atom1["valenz"]:
+                continue
+
+            for j in range(i + 1, len(atome)):
+
+                atom2 = atome[j]
+
+                if atom2["verbraucht"] >= atom2["valenz"]:
+                    continue
+
+                bestehend = bindung_nach_paar.get(
+                    frozenset([atom1["id"], atom2["id"]])
+                )
+
+                if bestehend is None:
+                    ordnungen = idk.BINDUNGSARTEN[atom1["symbol"]]
+                else:
+                    ordnungen = [bestehend["order"] + 1]
+
+                for ordnung in ordnungen:
+
+                    if ordnung not in idk.BINDUNGSARTEN[atom1["symbol"]]:
+                        continue
+
+                    if ordnung not in idk.BINDUNGSARTEN[atom2["symbol"]]:
+                        continue
+
+                    # Valenzbedarf: neue Bindung = ganze Ordnung,
+                    # Hochstufen = nur die eine zusaetzliche Stufe.
+                    bedarf = ordnung if bestehend is None else 1
+
+                    if (
+                        atom1["verbraucht"] + bedarf > atom1["valenz"]
+                        or atom2["verbraucht"] + bedarf > atom2["valenz"]
+                    ):
+                        continue
+
+                    kandidaten.append((i, j, ordnung, bestehend))
+
+                    gewichte.append(
+                        self._bindungsgewicht(
+                            atom1["symbol"], atom2["symbol"], ordnung
+                        )
+                    )
+
+        if not kandidaten:
+            return False
+
+        # Nur eine begrenzte Anzahl Kandidaten tatsaechlich gegen
+        # RDKit durchprobieren - die Kandidatenliste waechst
+        # quadratisch mit der Atomanzahl.
+        # Die Gewichtung bleibt dabei erhalten, aber die Kandidatenliste
+        # wird vorher auf die best bewerteten Eintraege reduziert, damit
+        # der teure RDKit-Teil nicht mit Tausenden von Optionen belastet
+        # wird.
+        bewertete = list(zip(kandidaten, gewichte))
+        bewertete.sort(key=lambda paar: paar[1], reverse=True)
+        reihenfolge = [kandidat for kandidat, _gewicht in bewertete[:10]]
+
+        for i, j, ordnung, bestehend in reihenfolge:
+
+            if bestehend is None:
+
+                erfolg = self._probiere_bindung(
+                    atome, bindungen, bindung_paare, i, j, ordnung
+                )
+
+            else:
+
+                erfolg = self._probiere_hochstufung(
+                    atome, bindungen, bestehend, i, j
+                )
+
+            if erfolg:
+                return True
+
+        return False
+
+    def _probiere_bindung(
+        self, atome, bindungen, bindung_paare, i, j, ordnung
+    ):
+        """Fuegt die Bindung testweise ein, prueft das ENTSTEHENDE
+        Teilmolekuel gegen RDKit, und macht die Aenderung wieder
+        rueckgaengig, falls RDKit sie ablehnt."""
+
+        atom1 = atome[i]
+        atom2 = atome[j]
+
+        bindungen.append({"atom1": atom1["id"], "atom2": atom2["id"], "order": ordnung})
+
+        atom1["verbraucht"] += ordnung
+        atom2["verbraucht"] += ordnung
+
+        bindung_paare.add(frozenset([atom1["id"], atom2["id"]]))
+
+        teilmolekuel = self._exportiere(atome, bindungen)
+
+        if rb.ist_gueltig(teilmolekuel):
+            return True
+
+        bindungen.pop()
+        atom1["verbraucht"] -= ordnung
+        atom2["verbraucht"] -= ordnung
+        bindung_paare.discard(frozenset([atom1["id"], atom2["id"]]))
+
+        return False
+
+    def _probiere_hochstufung(self, atome, bindungen, bindung, i, j):
+        """Erhoeht die Ordnung einer BESTEHENDEN Bindung um 1, prueft
+        gegen RDKit und macht es bei Ablehnung rueckgaengig."""
+
+        atom1 = atome[i]
+        atom2 = atome[j]
+
+        bindung["order"] += 1
+        atom1["verbraucht"] += 1
+        atom2["verbraucht"] += 1
+
+        if rb.ist_gueltig(self._exportiere(atome, bindungen)):
+            return True
+
+        bindung["order"] -= 1
+        atom1["verbraucht"] -= 1
+        atom2["verbraucht"] -= 1
+
+        return False
+
+    def _fuelle_auf(self, atome, bindungen, bindung_paare):
+        """Haengt an jedes Atom mit offener Valenz einwertige Atome
+        (H, Halogene) - gewichtet nach gelernter Bindungsqualitaet, mit
+        RDKit-Pruefung je Bindung. Stoppt, sobald max_atome erreicht
+        ist. P/S werden nur bis zur ueblichen Valenz aufgefuellt (siehe
+        _AUFFUELL_VALENZ), nicht bis zur hypervalenten Maximalvalenz."""
+
+        fueller = [
+            e for e in self.elemente if idk.VALENZEN.get(e) == 1
+        ]
+
+        if not fueller:
+            return
+
+        kern = list(range(len(atome)))
+
+        random.shuffle(kern)
+
+        for i in kern:
+
+            atom = atome[i]
+
+            ziel = min(
+                atom["valenz"],
+                _AUFFUELL_VALENZ.get(atom["symbol"], atom["valenz"])
+            )
+
+            while atom["verbraucht"] < ziel and len(atome) < self.max_atome:
+
+                gewichte = [
+                    self._bindungsgewicht(atom["symbol"], f, 1)
+                    for f in fueller
+                ]
+
+                neu_id = len(atome)
+                gesetzt = False
+
+                for symbol in self._gewichtete_wahl(fueller, gewichte):
+
+                    atome.append({
+                        "id": neu_id,
+                        "symbol": symbol,
+                        "valenz": idk.VALENZEN[symbol],
+                        "verbraucht": 0,
+                    })
+
+                    if self._probiere_bindung(
+                        atome, bindungen, bindung_paare, i, neu_id, 1
+                    ):
+                        gesetzt = True
+                        break
+
+                    atome.pop()
+
+                if not gesetzt:
+                    break
+
+            if len(atome) >= self.max_atome:
+                break
+
+    def _exportiere(self, atome, bindungen):
+        """Wandelt den internen Bauzustand in dasselbe Format um, das
+        idk.exportiere_molekuel() liefert - damit Kritiker/
+        KIGedaechtnis/labor.py ohne Unterscheidung weiterarbeiten
+        koennen, egal ob ein Molekuel von idk oder von KIKonstruktor
+        stammt."""
+
+        return {
+            "atoms": [
+                {
+                    "id": atom["id"],
+                    "element": atom["symbol"],
+                    "valence": atom["valenz"],
+                    "used_valence": atom["verbraucht"],
+                }
+                for atom in atome
+            ],
+            "bonds": [dict(b) for b in bindungen],
+        }
+
+
+# ==========================================================
+# End of file
+# ==========================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+{}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+a
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+n
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+n
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+n
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+n
+
+
+
+
+
+
+
