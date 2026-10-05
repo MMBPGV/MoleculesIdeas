@@ -505,7 +505,7 @@ Possible future improvements include:
 * More advanced molecular visualization
 * Improved experiment management
 * Additional chemical data sources
-
+*English translation
 The current architecture is intended to make these components independently extensible.
 
 ---
