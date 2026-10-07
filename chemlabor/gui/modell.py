@@ -8,34 +8,48 @@
 # Ein Ergebnis ist wie im ganzen Projekt ein Tupel
 #   (nummer, phase, molekuel, analyse)
 # so wie ChemLabor es liefert.
+#
+# Filter werden ueber INTERNE Schluessel angesprochen ("alle", "top10",
+# "stabil", ...), nicht ueber ihren Anzeigetext - der haengt von der
+# Sprache ab (texte.py). Die alten deutschen Anzeigetexte werden von
+# filtere() weiterhin akzeptiert.
 
 from collections import deque
 
 from chemlabor.chemie import rdkit_bruecke as rb
 from chemlabor.gui.formatierung import formatiere_probleme
+from chemlabor.gui.kritiker_texte import uebersetze_text, uebersetze_urteil
 from chemlabor.ki.gedaechtnis import molekuel_signatur
 from chemlabor.labor import formel
+from chemlabor.texte import t, t_oder, zahl
 
 
-PHASEN = ("Alle", "Beobachtung", "Automatik")
+# Phasen-Filter: "alle" oder ein Phasenwert, wie ChemLabor ihn liefert
+PHASEN = ("alle", "Beobachtung", "Automatik")
 
-FILTER = ("Alle", "Top 10", "Top 50", "Nur stabil (≥75)", "Nur instabil (<50)")
+FILTER = ("alle", "top10", "top50", "stabil", "instabil")
 
 # Anzeige-Filter fuer die PubChem-Spalte -> erlaubte Status (None = alle)
 NEUHEIT_FILTER = {
-    "Alle": None,
-    "Nur unbekannt": ("unbekannt",),
-    "Nur bekannt": ("bekannt",),
-    "Nur ungeprüft": ("ungeprueft",),
+    "alle": None,
+    "unbekannt": ("unbekannt",),
+    "bekannt": ("bekannt",),
+    "ungeprueft": ("ungeprueft",),
 }
 
-STATUS_TEXT = {
-    "unbekannt": "unbekannt",
-    "bekannt": "bekannt",
-    "ungeprueft": "ungeprüft",
+# Fruehere deutsche Anzeigetexte -> interner Schluessel
+_ALTE_NAMEN = {
+    "Alle": "alle",
+    "Top 10": "top10",
+    "Top 50": "top50",
+    "Nur stabil (≥75)": "stabil",
+    "Nur instabil (<50)": "instabil",
+    "Nur unbekannt": "unbekannt",
+    "Nur bekannt": "bekannt",
+    "Nur ungeprüft": "ungeprueft",
 }
 
-# Mehr als so viele Zeilen zeigt die Tabelle bei Filter "Alle" nicht
+# Mehr als so viele Zeilen zeigt die Tabelle bei Filter "alle" nicht
 MAX_ZEILEN = 500
 
 STABIL_AB = 75
@@ -44,6 +58,18 @@ STABIL_AB = 75
 def punkte_von(eintrag):
 
     return eintrag[3]["bewertung"]["punkte"]
+
+
+def phase_text(phase):
+    """Anzeigetext einer Phase ('Beobachtung' -> 'Observation')."""
+
+    return t_oder(f"phase.{phase}", phase)
+
+
+def status_text(status):
+    """Anzeigetext eines PubChem-Status ('unbekannt' -> 'unknown')."""
+
+    return t_oder(f"status.{status}", status)
 
 
 class ErgebnisModell:
@@ -102,27 +128,31 @@ class ErgebnisModell:
         if pruefung is None:
             return "–"
 
-        return STATUS_TEXT.get(pruefung["status"], pruefung["status"])
+        return status_text(pruefung["status"])
 
     def filtere(
             self,
-            filter_wahl="Alle",
-            phase="Alle",
+            filter_wahl="alle",
+            phase="alle",
             duplikate_ausblenden=False,
-            neuheit_filter="Alle",
+            neuheit_filter="alle",
             max_zeilen=MAX_ZEILEN,
             sortierung=None
     ):
         """sortierung: None oder (spalte, absteigend)."""
 
+        filter_wahl = _ALTE_NAMEN.get(filter_wahl, filter_wahl)
+        phase = _ALTE_NAMEN.get(phase, phase)
+        neuheit_filter = _ALTE_NAMEN.get(neuheit_filter, neuheit_filter)
+
         ergebnisse = list(self.eintraege)
 
-        if phase != "Alle":
+        if phase != "alle":
             ergebnisse = [e for e in ergebnisse if e[1] == phase]
 
-        if filter_wahl == "Nur stabil (≥75)":
+        if filter_wahl == "stabil":
             ergebnisse = [e for e in ergebnisse if punkte_von(e) >= STABIL_AB]
-        elif filter_wahl == "Nur instabil (<50)":
+        elif filter_wahl == "instabil":
             ergebnisse = [e for e in ergebnisse if punkte_von(e) < 50]
 
         erlaubt = NEUHEIT_FILTER.get(neuheit_filter)
@@ -133,7 +163,7 @@ class ErgebnisModell:
                 if self.neuheit.get(e[0], {}).get("status") in erlaubt
             ]
 
-        if filter_wahl == "Alle" and len(ergebnisse) > max_zeilen:
+        if filter_wahl == "alle" and len(ergebnisse) > max_zeilen:
             ergebnisse = ergebnisse[-max_zeilen:]
 
         if duplikate_ausblenden:
@@ -162,9 +192,9 @@ class ErgebnisModell:
 
         ergebnisse.sort(key=punkte_von, reverse=True)
 
-        if filter_wahl == "Top 10":
+        if filter_wahl == "top10":
             ergebnisse = ergebnisse[:10]
-        elif filter_wahl == "Top 50":
+        elif filter_wahl == "top50":
             ergebnisse = ergebnisse[:50]
 
         if sortierung:
@@ -203,32 +233,33 @@ def filter_text(labor):
     """Eine Zeile zum Verhaeltnis-Filter des Labors."""
 
     if labor is None or labor.ziel_verhaeltnis_neg_zu_pos is None:
-        return "aus"
+        return t("verh.aus")
 
-    return (
-        f"{labor.ziel_verhaeltnis_neg_zu_pos}:1 – "
-        f"{labor._positiv_gezaehlt} positiv, {labor._negativ_gezaehlt} negativ, "
-        f"{labor._negativ_verworfen} verworfen"
+    return t(
+        "verh.stand",
+        ziel=labor.ziel_verhaeltnis_neg_zu_pos,
+        pos=labor._positiv_gezaehlt,
+        neg=labor._negativ_gezaehlt,
+        verw=labor._negativ_verworfen
     )
 
 
 def config_text(config):
     """Kurzfassung der Einstellungen fuer die Kopfzeile."""
 
-    def zahl(n):
-        return f"{n:,}".replace(",", ".")
-
     teile = [
-        f"{zahl(config.beobachtungen)} Beobachtungen",
-        "Automatik endlos" if config.endlos else f"{zahl(config.automatik_experimente)} Automatik",
-        f"max. {config.max_atome} Atome",
-        "Konstruktion" if config.automatik_modus == "konstruktion" else "Zufall (Best-of-N)",
-        "Filter aus" if config.ziel_verhaeltnis_neg_zu_pos is None
-        else f"Filter {config.ziel_verhaeltnis_neg_zu_pos}:1",
+        t("cfg.beobachtungen", n=zahl(config.beobachtungen)),
+        t("cfg.endlos") if config.endlos
+        else t("cfg.automatik", n=zahl(config.automatik_experimente)),
+        t("cfg.max_atome", n=config.max_atome),
+        t("cfg.konstruktion") if config.automatik_modus == "konstruktion"
+        else t("cfg.zufall"),
+        t("cfg.filter_aus") if config.ziel_verhaeltnis_neg_zu_pos is None
+        else t("cfg.filter", n=config.ziel_verhaeltnis_neg_zu_pos),
     ]
 
     if config.autosave_pfad:
-        teile.append("Autosave")
+        teile.append(t("cfg.autosave"))
 
     return "  ·  ".join(teile)
 
@@ -240,16 +271,25 @@ def baue_detailtext(eintrag, pruefung=None):
     nummer, phase, molekuel, analyse = eintrag
 
     zeilen = [
-        f"Experiment {nummer}  ({phase})",
-        f"Formel: {formel(molekuel)}",
+        t("detail.experiment", nummer=nummer, phase=phase_text(phase)),
+        t("detail.formel", formel=formel(molekuel)),
         "",
-        f"Punkte: {analyse['bewertung']['punkte']}  –  {analyse['bewertung']['urteil']}",
+        t(
+            "detail.punkte",
+            punkte=analyse["bewertung"]["punkte"],
+            urteil=uebersetze_urteil(analyse["bewertung"]["urteil"])
+        ),
         "",
     ]
 
     rdkit_gueltig = analyse.get("rdkit_gueltig")
 
-    zeilen.append(f"RDKit-gültig: {'Ja' if rdkit_gueltig else 'Nein'}")
+    zeilen.append(
+        t(
+            "detail.rdkit_gueltig",
+            antwort=t("detail.ja") if rdkit_gueltig else t("detail.nein")
+        )
+    )
 
     if rdkit_gueltig:
 
@@ -258,46 +298,43 @@ def baue_detailtext(eintrag, pruefung=None):
         signatur = rb.kanonische_signatur(molekuel)
 
         if formel_rdkit:
-            zeilen.append(f"RDKit-Summenformel: {formel_rdkit}")
+            zeilen.append(t("detail.rdkit_formel", formel=formel_rdkit))
 
         if masse is not None:
-            zeilen.append(f"Molmasse: {masse:.2f} g/mol")
+            zeilen.append(t("detail.molmasse", masse=f"{masse:.2f}"))
 
         if signatur:
-            zeilen.append(f"Kanonischer SMILES: {signatur}")
+            zeilen.append(t("detail.smiles", smiles=signatur))
 
     if pruefung is not None:
 
         zeilen.append("")
-        zeilen.append(f"PubChem: {STATUS_TEXT.get(pruefung['status'], pruefung['status'])}")
+        zeilen.append(t("detail.pubchem", status=status_text(pruefung["status"])))
 
         if pruefung.get("cid"):
-            zeilen.append(f"CID {pruefung['cid']} (Doppelklick auf die Zeile öffnet den Eintrag)")
+            zeilen.append(t("detail.cid", cid=pruefung["cid"]))
 
         if pruefung.get("smiles"):
-            zeilen.append(f"SMILES ohne H: {pruefung['smiles']}")
+            zeilen.append(t("detail.smiles_ohne_h", smiles=pruefung["smiles"]))
 
         if pruefung.get("inchikey"):
-            zeilen.append(f"InChIKey: {pruefung['inchikey']}")
+            zeilen.append(t("detail.inchikey", key=pruefung["inchikey"]))
 
         if pruefung["status"] == "unbekannt" and pruefung.get("stereo_offen"):
-            zeilen.append(
-                "Achtung: Stereo offen – PubChem kennt evtl. nur konkrete "
-                "Stereoisomere, 'unbekannt' bitte von Hand gegenprüfen."
-            )
+            zeilen.append(t("detail.stereo"))
 
         if pruefung.get("fehler"):
-            zeilen.append(f"Fehler bei der Abfrage: {pruefung['fehler']}")
+            zeilen.append(t("detail.abfrage_fehler", fehler=pruefung["fehler"]))
 
     zeilen.append("")
-    zeilen.append("Probleme:")
+    zeilen.append(t("detail.probleme"))
 
-    zeilen.extend(formatiere_probleme(analyse["probleme"]) or [" - keine"])
+    zeilen.extend(formatiere_probleme(analyse["probleme"]) or [t("detail.keine")])
 
     zeilen.append("")
-    zeilen.append("Erklärung:")
+    zeilen.append(t("detail.erklaerung"))
 
     for text in analyse["erklaerung"]:
-        zeilen.append(" - " + text)
+        zeilen.append(" - " + uebersetze_text(text))
 
     return "\n".join(zeilen)

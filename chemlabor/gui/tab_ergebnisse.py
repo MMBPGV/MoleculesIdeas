@@ -7,6 +7,10 @@
 # ist jetzt eine Spalte dieser Tabelle: "Neuheit prüfen" fragt die
 # gerade SICHTBAREN Zeilen ab, "Anzeige: Nur unbekannt" zeigt danach nur
 # die Kandidaten.
+#
+# Die Filter-Comboboxen zeigen uebersetzten Text, gelesen wird aber ueber
+# den Index (Combobox.current()) und die internen Schluessel aus
+# modell.py - so haengt die Logik nicht von der Sprache ab.
 
 import json
 import queue
@@ -16,24 +20,23 @@ import webbrowser
 from tkinter import filedialog, scrolledtext, ttk
 
 from chemlabor.chemie import neuheit
+from chemlabor.gui.kritiker_texte import uebersetze_urteil
 from chemlabor.gui.lewis import LewisAnsicht
 from chemlabor.gui.modell import (
     FILTER,
     NEUHEIT_FILTER,
     PHASEN,
+    STABIL_AB,
     baue_detailtext,
+    phase_text,
     punkte_von,
 )
 from chemlabor.gui.theme import FARBEN
 from chemlabor.labor import formel
+from chemlabor.texte import t
 
 
 SPALTEN = ("nr", "phase", "formel", "atome", "punkte", "urteil", "rdkit", "pubchem")
-
-BESCHRIFTUNG = {
-    "nr": "Nr", "phase": "Phase", "formel": "Formel", "atome": "Atome",
-    "punkte": "Punkte", "urteil": "Urteil", "rdkit": "RDKit", "pubchem": "PubChem",
-}
 
 BREITE = {
     "nr": 50, "phase": 90, "formel": 110, "atome": 55,
@@ -43,6 +46,12 @@ BREITE = {
 # So viele verschiedene Strukturen werden pro Klick bei PubChem abgefragt
 # (jede neue Struktur kostet ~0,25 s wegen des PubChem-Limits).
 NEUHEIT_MAX_STRUKTUREN = 300
+
+
+def beschriftung(spalte):
+    """Spaltenueberschrift in der aktiven Sprache."""
+
+    return t(f"spalte.{spalte}")
 
 
 class TabErgebnisse(ttk.Frame):
@@ -64,11 +73,10 @@ class TabErgebnisse(ttk.Frame):
         self._neuheit_faden = None
         self._poll_id = None
 
-        self.filter_var = tk.StringVar(value="Alle")
-        self.phase_var = tk.StringVar(value="Alle")
         self.duplikate_var = tk.BooleanVar(value=False)
-        self.neuheit_filter_var = tk.StringVar(value="Alle")
         self.offline_var = tk.BooleanVar(value=False)
+
+        self._neuheit_schluessel = tuple(NEUHEIT_FILTER)
 
         self._baue_leisten()
         self._baue_inhalt()
@@ -84,20 +92,30 @@ class TabErgebnisse(ttk.Frame):
         oben = ttk.Frame(self, padding=(8, 8, 8, 2))
         oben.pack(fill="x")
 
-        ttk.Label(oben, text="Filter:").pack(side="left")
+        ttk.Label(oben, text=t("erg.filter")).pack(side="left")
 
-        box = ttk.Combobox(oben, textvariable=self.filter_var, values=list(FILTER), state="readonly", width=17)
-        box.pack(side="left", padx=(4, 12))
-        box.bind("<<ComboboxSelected>>", lambda _e: self.aktualisiere())
+        self.filter_box = ttk.Combobox(
+            oben,
+            values=[t(f"filter.{k}", ab=STABIL_AB) for k in FILTER],
+            state="readonly", width=20
+        )
+        self.filter_box.current(0)
+        self.filter_box.pack(side="left", padx=(4, 12))
+        self.filter_box.bind("<<ComboboxSelected>>", lambda _e: self.aktualisiere())
 
-        ttk.Label(oben, text="Phase:").pack(side="left")
+        ttk.Label(oben, text=t("erg.phase")).pack(side="left")
 
-        box = ttk.Combobox(oben, textvariable=self.phase_var, values=list(PHASEN), state="readonly", width=12)
-        box.pack(side="left", padx=(4, 12))
-        box.bind("<<ComboboxSelected>>", lambda _e: self.aktualisiere())
+        self.phase_box = ttk.Combobox(
+            oben,
+            values=[t(f"phase.{p}") for p in PHASEN],
+            state="readonly", width=14
+        )
+        self.phase_box.current(0)
+        self.phase_box.pack(side="left", padx=(4, 12))
+        self.phase_box.bind("<<ComboboxSelected>>", lambda _e: self.aktualisiere())
 
         ttk.Checkbutton(
-            oben, text="Wiederholungen ausblenden",
+            oben, text=t("erg.duplikate"),
             variable=self.duplikate_var, command=self.aktualisiere
         ).pack(side="left", padx=(0, 12))
 
@@ -107,18 +125,23 @@ class TabErgebnisse(ttk.Frame):
         unten = ttk.Frame(self, padding=(8, 2, 8, 4))
         unten.pack(fill="x")
 
-        self.neuheit_button = ttk.Button(unten, text="Neuheit prüfen (PubChem)", command=self._neuheit_klick)
+        self.neuheit_button = ttk.Button(unten, text=t("erg.neuheit_button"), command=self._neuheit_klick)
         self.neuheit_button.pack(side="left", padx=(0, 8))
 
-        ttk.Checkbutton(unten, text="nur Cache (offline)", variable=self.offline_var).pack(side="left", padx=(0, 12))
+        ttk.Checkbutton(unten, text=t("erg.offline"), variable=self.offline_var).pack(side="left", padx=(0, 12))
 
-        ttk.Label(unten, text="PubChem-Anzeige:").pack(side="left")
+        ttk.Label(unten, text=t("erg.pubchem_anzeige")).pack(side="left")
 
-        box = ttk.Combobox(unten, textvariable=self.neuheit_filter_var, values=list(NEUHEIT_FILTER), state="readonly", width=14)
-        box.pack(side="left", padx=(4, 12))
-        box.bind("<<ComboboxSelected>>", lambda _e: self.aktualisiere())
+        self.neuheit_box = ttk.Combobox(
+            unten,
+            values=[t(f"neufilter.{k}") for k in self._neuheit_schluessel],
+            state="readonly", width=16
+        )
+        self.neuheit_box.current(0)
+        self.neuheit_box.pack(side="left", padx=(4, 12))
+        self.neuheit_box.bind("<<ComboboxSelected>>", lambda _e: self.aktualisiere())
 
-        ttk.Button(unten, text="Exportieren…", command=self._export_klick).pack(side="left")
+        ttk.Button(unten, text=t("erg.export_button"), command=self._export_klick).pack(side="left")
 
         self.status = ttk.Label(self, text="", style="Gedimmt.TLabel", padding=(8, 0, 8, 4))
         self.status.pack(fill="x")
@@ -137,7 +160,7 @@ class TabErgebnisse(ttk.Frame):
 
             self.tabelle.heading(
                 spalte,
-                text=BESCHRIFTUNG[spalte],
+                text=beschriftung(spalte),
                 command=lambda s=spalte: self._sortiere(s)
             )
 
@@ -172,6 +195,18 @@ class TabErgebnisse(ttk.Frame):
         rechts.add(self.detail, weight=2)
 
     # ------------------------------------------------------
+    # Filterauswahl (Index -> interner Schluessel)
+    # ------------------------------------------------------
+
+    @staticmethod
+    def _wahl(box, schluessel):
+        """Interner Schluessel zur aktuellen Auswahl der Combobox."""
+
+        index = box.current()
+
+        return schluessel[index] if index >= 0 else schluessel[0]
+
+    # ------------------------------------------------------
     # Tabelle
     # ------------------------------------------------------
 
@@ -194,10 +229,10 @@ class TabErgebnisse(ttk.Frame):
         ausgewaehlt = self.tabelle.selection()
 
         self._sichtbar = self.modell.filtere(
-            filter_wahl=self.filter_var.get(),
-            phase=self.phase_var.get(),
+            filter_wahl=self._wahl(self.filter_box, FILTER),
+            phase=self._wahl(self.phase_box, PHASEN),
             duplikate_ausblenden=self.duplikate_var.get(),
-            neuheit_filter=self.neuheit_filter_var.get(),
+            neuheit_filter=self._wahl(self.neuheit_box, self._neuheit_schluessel),
             sortierung=self.sortierung,
         )
 
@@ -216,19 +251,19 @@ class TabErgebnisse(ttk.Frame):
                 "", "end", iid=str(nummer),
                 values=(
                     nummer,
-                    phase,
+                    phase_text(phase),
                     formel(molekuel),
                     len(molekuel["atoms"]),
                     punkte_von(e),
-                    analyse["bewertung"]["urteil"],
-                    "ja" if analyse.get("rdkit_gueltig") else "nein",
+                    uebersetze_urteil(analyse["bewertung"]["urteil"]),
+                    t("rdkit.ja_zelle") if analyse.get("rdkit_gueltig") else t("rdkit.nein_zelle"),
                     self.modell.pubchem_text(nummer),
                 ),
                 tags=(pruefung["status"],) if pruefung else ()
             )
 
         self.anzahl_label.config(
-            text=f"{len(self._sichtbar)} angezeigt · {self.modell.zaehler} Experimente gesamt"
+            text=t("erg.anzahl", n=len(self._sichtbar), gesamt=self.modell.zaehler)
         )
 
         # Auswahl nach dem Neuaufbau wiederherstellen, ohne Lewis neu zu berechnen
@@ -255,7 +290,7 @@ class TabErgebnisse(ttk.Frame):
 
         for s in SPALTEN:
             pfeil = (" ▼" if absteigend else " ▲") if s == spalte else ""
-            self.tabelle.heading(s, text=BESCHRIFTUNG[s] + pfeil)
+            self.tabelle.heading(s, text=beschriftung(s) + pfeil)
 
         self.aktualisiere()
 
@@ -314,21 +349,21 @@ class TabErgebnisse(ttk.Frame):
             self._neuheit_abbruch.set()
 
             self.neuheit_button.config(state="disabled")
-            self.status.config(text="Breche ab...")
+            self.status.config(text=t("erg.breche_ab"))
 
             return
 
         if not self._sichtbar:
 
-            self.status.config(text="Keine Zeilen sichtbar - erst einen Lauf starten oder Filter lockern.")
+            self.status.config(text=t("erg.keine_zeilen"))
 
             return
 
         self._neuheit_abbruch = threading.Event()
         self._neuheit_laeuft = True
 
-        self.neuheit_button.config(text="■ Abbrechen")
-        self.status.config(text="Starte PubChem-Prüfung...")
+        self.neuheit_button.config(text=t("erg.abbrechen"))
+        self.status.config(text=t("erg.starte"))
 
         self._neuheit_faden = threading.Thread(
             target=self._neuheit_worker,
@@ -384,7 +419,7 @@ class TabErgebnisse(ttk.Frame):
                 ergebnisse[nummer] = pruefung
 
                 if i % 20 == 0:
-                    self.neuheit_queue.put(("fortschritt", f"PubChem: {i}/{len(beste_zuerst)} Zeilen geprüft..."))
+                    self.neuheit_queue.put(("fortschritt", t("erg.fortschritt", i=i, n=len(beste_zuerst))))
 
             self.neuheit_queue.put(("fertig", ergebnisse, abbruch.is_set(), uebersprungen))
 
@@ -424,19 +459,19 @@ class TabErgebnisse(ttk.Frame):
                     text = self._zusammenfassung(ergebnisse)
 
                     if abgebrochen:
-                        text += " (abgebrochen)"
+                        text += t("erg.abgebrochen")
 
                     if uebersprungen:
-                        text += f" – {uebersprungen} Zeilen über dem Limit von {NEUHEIT_MAX_STRUKTUREN} Strukturen nicht geprüft."
+                        text += t("erg.limit", n=uebersprungen, max=NEUHEIT_MAX_STRUKTUREN)
 
                     self.status.config(text=text)
-                    self.log("PubChem-Prüfung: " + text)
+                    self.log(t("erg.log_pruefung", text=text))
 
                 elif art == "fehler":
 
                     self._neuheit_beenden()
 
-                    self.status.config(text=f"PubChem-Prüfung fehlgeschlagen: {nachricht[1]}")
+                    self.status.config(text=t("erg.pruefung_fehler", fehler=nachricht[1]))
 
         except queue.Empty:
 
@@ -448,7 +483,7 @@ class TabErgebnisse(ttk.Frame):
 
         self._neuheit_laeuft = False
 
-        self.neuheit_button.config(text="Neuheit prüfen (PubChem)", state="normal")
+        self.neuheit_button.config(text=t("erg.neuheit_button"), state="normal")
 
     @staticmethod
     def _zusammenfassung(ergebnisse):
@@ -463,10 +498,12 @@ class TabErgebnisse(ttk.Frame):
             if p["status"] == "unbekannt" and p.get("stereo_offen"):
                 stereo_offen += 1
 
-        return (
-            f"{zaehler.get('unbekannt', 0)} unbekannt ({stereo_offen} davon mit offenem Stereo), "
-            f"{zaehler.get('bekannt', 0)} bekannt, "
-            f"{zaehler.get('ungeprueft', 0)} ungeprüft."
+        return t(
+            "erg.zusammenfassung",
+            u=zaehler.get("unbekannt", 0),
+            s=stereo_offen,
+            b=zaehler.get("bekannt", 0),
+            g=zaehler.get("ungeprueft", 0)
         )
 
     def beenden_und_warten(self, sekunden=3):
@@ -497,15 +534,15 @@ class TabErgebnisse(ttk.Frame):
 
         if not self._sichtbar:
 
-            self.status.config(text="Nichts zu exportieren.")
+            self.status.config(text=t("erg.nichts_export"))
 
             return
 
         pfad = filedialog.asksaveasfilename(
-            title="Ergebnisse exportieren",
+            title=t("erg.export_titel"),
             defaultextension=".json",
             initialfile="ergebnisse.json",
-            filetypes=[("JSON-Dateien", "*.json"), ("Alle Dateien", "*.*")]
+            filetypes=[(t("datei.json"), "*.json"), (t("datei.alle"), "*.*")]
         )
 
         if not pfad:
@@ -515,13 +552,15 @@ class TabErgebnisse(ttk.Frame):
 
             anzahl = self.exportiere(pfad)
 
-            self.status.config(text=f"{anzahl} Einträge exportiert: {pfad}")
+            self.status.config(text=t("erg.exportiert", n=anzahl, pfad=pfad))
 
         except OSError as fehler:
 
-            self.status.config(text=f"Export fehlgeschlagen: {fehler}")
+            self.status.config(text=t("erg.export_fehler", fehler=fehler))
 
     def exportiere(self, pfad):
+        """Die Exportdatei bleibt sprachunabhaengig: interne Schluessel
+        und die urspruenglichen Kritiker-Texte, keine Anzeigetexte."""
 
         daten = []
 

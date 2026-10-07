@@ -5,6 +5,7 @@ from collections import defaultdict, deque, Counter
 from datetime import datetime, timezone
 
 from chemlabor.chemie.zufallsgenerator import VALENZEN, BINDUNGSARTEN, MOLEKUEL_MAX_ATOME
+from chemlabor.texte import t
 
 # ==========================================================
 # KIGedaechtnis
@@ -526,7 +527,7 @@ class KIGedaechtnis:
         punkte = self.lernkurve
 
         if len(punkte) < 2:
-            return None, "Noch zu wenige Daten für einen Lerntrend."
+            return None, t("ged.trend_zu_wenig")
 
         n = min(letzte_n, len(punkte) // 2) or 1
 
@@ -539,11 +540,11 @@ class KIGedaechtnis:
         differenz = spaete_avg - fruehe_avg
 
         if differenz > 1:
-            text = f"Verbessert sich (+{differenz:.1f} Punkte im Schnitt seit Beginn)."
+            text = t("ged.trend_besser", d=f"{differenz:.1f}")
         elif differenz < -1:
-            text = f"Verschlechtert sich ({differenz:.1f} Punkte im Schnitt seit Beginn)."
+            text = t("ged.trend_schlechter", d=f"{differenz:.1f}")
         else:
-            text = "Stabil, kein deutlicher Trend."
+            text = t("ged.trend_stabil")
 
         return differenz, text
 
@@ -570,7 +571,7 @@ class KIGedaechtnis:
         zehnmal derselbe Wert soll nicht zehnmal auftauchen)."""
 
         if not self.lauf_historie:
-            return "Noch kein Lauf verzeichnet."
+            return t("ged.kein_lauf")
 
         werte_je_einstellung = defaultdict(set)
 
@@ -587,9 +588,10 @@ class KIGedaechtnis:
             else:
                 teile.append(f"{schluessel}∈{sorted(werte, key=str)}")
 
-        return (
-            f"{len(self.lauf_historie)} Lauf/Läufe verzeichnet - "
-            + ", ".join(teile)
+        return t(
+            "ged.laeufe",
+            n=len(self.lauf_historie),
+            details=", ".join(teile)
         )
 
 
@@ -664,27 +666,24 @@ class KIGedaechtnis:
     def zusammenfassung(self):
         """Kurzer Textbericht darueber, was die KI gelernt hat."""
 
-        zeilen = [f"{self.beobachtungen} Molekuele beobachtet."]
+        zeilen = [t("ged.beobachtet", n=self.beobachtungen)]
 
         if self.beobachtungen:
 
             globaler_mittelwert = self._punkte_summe_global / self.beobachtungen
 
             zeilen.append(
-                f"Durchschnittliche Punktzahl aller beobachteten Molekuele: "
-                f"{globaler_mittelwert:.1f}"
+                t("ged.durchschnitt", x=f"{globaler_mittelwert:.1f}")
             )
 
             schwelle = self.stabilitaets_schwelle_adaptiv()
 
             zeilen.append(
-                f"Adaptive Stabilitaetsschwelle (oberes "
-                f"{int(self.ziel_perzentil * 100)}%-Quartil): {schwelle} Punkte"
+                t("ged.schwelle", p=int(self.ziel_perzentil * 100), s=schwelle)
             )
 
             zeilen.append(
-                f"Softmax-Temperatur: {self.temperatur:.2f} "
-                f"(Minimum {self.temperatur_min:.2f})"
+                t("ged.temperatur", wert=f"{self.temperatur:.2f}", minimum=f"{self.temperatur_min:.2f}")
             )
 
         if self.elemente_haeufigkeit:
@@ -697,17 +696,17 @@ class KIGedaechtnis:
                 for el, _gewicht in self.bevorzugte_elemente()[:5]
             )
 
-            zeilen.append(f"Beste Elemente (Bayes-geglaettet): {top_elemente}")
+            zeilen.append(t("ged.beste_elemente", liste=top_elemente))
 
         if self.bindungsmuster:
 
             top_bindungen = ", ".join(
-                f"{e1}-{e2} (Ordnung {o}, "
-                f"Ø{self._glaetten(*self.bindungsmuster[(e1, e2, o)]):.0f})"
+                t("ged.bindung_item", e1=e1, e2=e2, o=o,
+                  x=f"{self._glaetten(*self.bindungsmuster[(e1, e2, o)]):.0f}")
                 for (e1, e2, o), _gewicht in self.bevorzugte_bindungen()[:5]
             )
 
-            zeilen.append(f"Beste Bindungsmuster (Bayes-geglaettet): {top_bindungen}")
+            zeilen.append(t("ged.beste_bindungen", liste=top_bindungen))
 
         if self.ringgroessen_nutzung:
 
@@ -718,22 +717,21 @@ class KIGedaechtnis:
             )
 
             top_ringe = ", ".join(
-                f"{groesse}-Ring (Ø{self._glaetten(*werte):.0f})"
+                t("ged.ring_item", g=groesse, x=f"{self._glaetten(*werte):.0f}")
                 for groesse, werte in ring_zeilen[:5]
             )
 
-            zeilen.append(f"Beste Ringgroessen (Bayes-geglaettet): {top_ringe}")
+            zeilen.append(t("ged.beste_ringe", liste=top_ringe))
 
         if self.lernkurve:
 
             _differenz, trend_text = self.lerntrend()
 
             zeilen.append(
-                f"Lernkurve ({len(self.lernkurve)} Punkte, alle "
-                f"{self.lernkurve_intervall} Beobachtungen): {trend_text}"
+                t("ged.lernkurve", n=len(self.lernkurve), i=self.lernkurve_intervall, trend=trend_text)
             )
 
-        zeilen.append(f"Lauf-Historie: {self.lauf_historie_text()}")
+        zeilen.append(t("ged.lauf_historie", text=self.lauf_historie_text()))
 
         return "\n".join(zeilen)
 
@@ -917,7 +915,7 @@ class KIGedaechtnis:
         sich aber ab jetzt auf neu hinzukommende Beobachtungen aus."""
 
         if not dateipfade:
-            raise ValueError("Mindestens eine Datei wird benötigt.")
+            raise ValueError(t("ged.keine_datei"))
 
         quellen = [cls.laden(pfad) for pfad in dateipfade]
 

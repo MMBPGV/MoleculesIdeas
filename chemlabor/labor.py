@@ -22,6 +22,7 @@ from chemlabor.ki.gedaechtnis import (
 from chemlabor.ki.konstruktor import KIKonstruktor
 from chemlabor.pfade import PERIODENSYSTEM
 from chemlabor.config import LaborConfig
+from chemlabor.texte import t
 
 
 
@@ -401,7 +402,7 @@ class ChemLabor:
         molekuel, erfolgreich = self.konstruktor.baue_molekuel()
 
         if not erfolgreich:
-            raise RuntimeError("Konstruktion gescheitert (RDKit-Backtracking ohne gültiges Ergebnis)")
+            raise RuntimeError(t("lab.konstruktion_gescheitert"))
 
         return molekuel
 
@@ -580,14 +581,13 @@ class ChemLabor:
             self.speichere_gedaechtnis(self.autosave_pfad)
 
             self.on_fortschritt(
-                f"Auto-gespeichert nach {self.experimente} Experimenten "
-                f"({self.autosave_pfad})."
+                t("lab.autosave_ok", n=self.experimente, pfad=self.autosave_pfad)
             )
 
         except OSError as fehler:
 
             self.on_fortschritt(
-                f"Autosave fehlgeschlagen: {fehler}"
+                t("lab.autosave_fehler", fehler=fehler)
             )
 
 
@@ -642,14 +642,13 @@ class ChemLabor:
         if self.fehler_counter[typ] <= self.config.fehler_log_limit:
 
             self.on_fortschritt(
-                f"Fehler ({typ}): {fehler}"
+                t("lab.fehler", typ=typ, fehler=fehler)
             )
 
         elif self.fehler_counter[typ] == self.config.fehler_log_limit + 1:
 
             self.on_fortschritt(
-                f"Weitere Fehler vom Typ {typ} werden nur noch gezaehlt, "
-                f"nicht mehr einzeln geloggt."
+                t("lab.weitere_fehler", typ=typ)
             )
 
 
@@ -722,8 +721,7 @@ class ChemLabor:
 
         self.on_fortschritt(
 
-            f"=== BEOBACHTUNGSPHASE "
-            f"({self.config.beobachtungen} Durchläufe) ==="
+            t("lab.beobachtungsphase", n=self.config.beobachtungen)
 
         )
 
@@ -873,10 +871,8 @@ class ChemLabor:
 
                 self.on_fortschritt(
 
-                    f"[Beobachtung] "
-                    f"{beobachtet}/{self.config.beobachtungen} "
-                    f""
-                    f"({analyse['bewertung']['punkte']} Punkte)"
+                    t("lab.beobachtung_fortschritt", i=beobachtet, n=self.config.beobachtungen,
+                    p=analyse['bewertung']['punkte'])
 
                 )
 
@@ -990,13 +986,12 @@ class ChemLabor:
 
         if endlos:
 
-            self.on_fortschritt("=== AUTOMATIKPHASE (Endlos-Modus) ===")
+            self.on_fortschritt(t("lab.automatik_endlos"))
 
         else:
 
             self.on_fortschritt(
-                f"=== AUTOMATIKPHASE "
-                f"({self.config.automatik_experimente} Durchläufe) ==="
+                t("lab.automatikphase", n=self.config.automatik_experimente)
             )
 
 
@@ -1076,8 +1071,8 @@ class ChemLabor:
                 if automatisch % self.config.automatik_endlos_log_intervall == 0:
 
                     self.on_fortschritt(
-                        f"[Automatik/Endlos] {automatisch} Molekuele erzeugt "
-                        f"({analyse['bewertung']['punkte']} Punkte)"
+                        t("lab.automatik_endlos_fortschritt", n=automatisch,
+                        p=analyse['bewertung']['punkte'])
                     )
 
             else:
@@ -1094,8 +1089,8 @@ class ChemLabor:
                 if automatisch % automatik_log_intervall == 0:
 
                     self.on_fortschritt(
-                        f"[Automatik] {automatisch}/{self.config.automatik_experimente} "
-                        f"({analyse['bewertung']['punkte']} Punkte)"
+                        t("lab.automatik_fortschritt", i=automatisch, n=self.config.automatik_experimente,
+                        p=analyse['bewertung']['punkte'])
                     )
 
 
@@ -1126,7 +1121,7 @@ class ChemLabor:
 
         self.on_fortschritt(
 
-            "=== KÜNSTLICHES CHEMIE-LABOR v0.7 ==="
+            t("lab.titel")
 
         )
 
@@ -1177,26 +1172,22 @@ class ChemLabor:
 
         else:
 
-            fehler_text = "keine"
+            fehler_text = t("lab.keine")
 
 
 
         self.on_fortschritt(
 
-            f"Labor beendet. "
-            f"Versuche: {self.versuche}, "
-            f"Experimente: {self.experimente}, "
-            f"Fehler: {fehler_text}"
+            t("lab.beendet", v=self.versuche, e=self.experimente, f=fehler_text)
 
         )
 
         if self.ziel_verhaeltnis_neg_zu_pos is not None:
 
             self.on_fortschritt(
-                f"Verhaeltnis-Filter (Ziel {self.ziel_verhaeltnis_neg_zu_pos}:1 "
-                f"neg:pos): {self._positiv_gezaehlt} positiv, "
-                f"{self._negativ_gezaehlt} negativ, davon "
-                f"{self._negativ_verworfen} verworfen."
+                t("lab.verhaeltnis_ende", ziel=self.ziel_verhaeltnis_neg_zu_pos,
+                pos=self._positiv_gezaehlt, neg=self._negativ_gezaehlt,
+                verw=self._negativ_verworfen)
             )
 
 

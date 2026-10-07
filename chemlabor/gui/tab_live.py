@@ -10,15 +10,12 @@ from tkinter import ttk
 
 from chemlabor.gui.lernkurve import LernkurveAnsicht
 from chemlabor.gui.modell import STABIL_AB, filter_text
+from chemlabor.texte import t, zahl
 
 
-KENNZAHLEN = (
-    ("experimente", "Experimente"),
-    ("mittel", "Ø Punkte"),
-    ("stabil", f"Stabil (≥{STABIL_AB})"),
-    ("spanne", "Min – Max"),
-    ("phasen", "Beobachtung / Automatik"),
-)
+# Nur die Schluessel - die Titel werden erst beim Bauen des Tabs
+# uebersetzt (nicht beim Import, sonst waere die Sprache zu frueh fest).
+KENNZAHLEN = ("experimente", "mittel", "stabil", "spanne", "phasen")
 
 
 class TabLive(ttk.Frame):
@@ -34,10 +31,12 @@ class TabLive(ttk.Frame):
 
         self.werte = {}
 
-        for spalte, (schluessel, titel) in enumerate(KENNZAHLEN):
+        for spalte, schluessel in enumerate(KENNZAHLEN):
 
             karte = ttk.Frame(raster, padding=(0, 0, 24, 0))
             karte.grid(row=0, column=spalte, sticky="w")
+
+            titel = t(f"live.{schluessel}", ab=STABIL_AB)
 
             ttk.Label(karte, text=titel, style="Gedimmt.TLabel").pack(anchor="w")
 
@@ -73,32 +72,38 @@ class TabLive(ttk.Frame):
         if k is None:
             return
 
-        experimente = f"{k['gesamt']:,}".replace(",", ".")
+        ausschnitt = k["ausgewertet"] < k["gesamt"]
+
+        experimente = zahl(k["gesamt"])
 
         if labor is not None:
-            experimente += f"  ({labor.versuche:,} Versuche)".replace(",", ".")
+            experimente += "  " + t("live.versuche", n=zahl(labor.versuche))
 
         self.werte["experimente"].config(text=experimente)
-        self.werte["mittel"].config(text=f"{k['mittel']:.1f}")
+        self.werte["mittel"].config(
+            text=f"{k['mittel']:.1f}" + ("*" if ausschnitt else "")
+        )
         self.werte["stabil"].config(
-            text=f"{k['stabil']} ({k['stabil'] / k['ausgewertet'] * 100:.0f} %)"
+            text=t(
+                "live.stabil_wert",
+                n=k["stabil"],
+                p=f"{k['stabil'] / k['ausgewertet'] * 100:.0f}"
+            )
         )
         self.werte["spanne"].config(text=f"{k['minimum']} – {k['maximum']}")
         self.werte["phasen"].config(text=f"{k['beobachtung']} / {k['automatik']}")
 
-        if k["ausgewertet"] < k["gesamt"]:
-            self.werte["mittel"].config(text=f"{k['mittel']:.1f}*")
+        filter_zeile = t("live.filter", text=filter_text(labor))
 
-        self.filter_label.config(
-            text="Verhältnis-Filter: " + filter_text(labor)
-            + ("   (* Durchschnitt über die letzten " + str(k["ausgewertet"]) + ")"
-               if k["ausgewertet"] < k["gesamt"] else "")
-        )
+        if ausschnitt:
+            filter_zeile += "   " + t("live.ausschnitt", n=k["ausgewertet"])
+
+        self.filter_label.config(text=filter_zeile)
 
         if labor is not None:
 
             _differenz, trend = labor.gedaechtnis.lerntrend()
 
-            self.trend_label.config(text="Lerntrend: " + trend)
+            self.trend_label.config(text=t("live.trend", text=trend))
 
             self.lernkurve.zeichne(labor)

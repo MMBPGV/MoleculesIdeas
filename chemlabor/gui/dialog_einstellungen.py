@@ -11,6 +11,7 @@ from tkinter import ttk
 
 from chemlabor.config import LaborConfig
 from chemlabor.pfade import AUTOSAVE_PFAD
+from chemlabor.texte import t
 
 
 def _ganzzahl(text, name):
@@ -20,7 +21,9 @@ def _ganzzahl(text, name):
     try:
         return int(sauber)
     except ValueError:
-        raise ValueError(f"{name}: '{text.strip()}' ist keine ganze Zahl.") from None
+        raise ValueError(
+            t("dlg.keine_ganzzahl", name=name, text=text.strip())
+        ) from None
 
 
 class EinstellungenDialog(tk.Toplevel):
@@ -31,7 +34,7 @@ class EinstellungenDialog(tk.Toplevel):
 
         super().__init__(master)
 
-        self.title("Einstellungen")
+        self.title(t("dlg.titel"))
         self.transient(master)
         self.resizable(False, False)
 
@@ -85,38 +88,38 @@ class EinstellungenDialog(tk.Toplevel):
             return eingabe
 
         self.erstes_feld = feld(
-            "Beobachtungen", self.beobachtungen,
-            "Zufallsmoleküle, aus denen die KI zuerst lernt"
+            t("dlg.beobachtungen"), self.beobachtungen,
+            t("dlg.beobachtungen_hinweis")
         )
 
-        feld("Automatik-Experimente", self.automatik, "danach von der KI selbst erzeugt")
-        feld("Kandidaten pro Molekül", self.kandidaten, "Best-of-N im KI-Generator")
-        feld("Max. Atome", self.max_atome, "Obergrenze je Molekül")
+        feld(t("dlg.automatik"), self.automatik, t("dlg.automatik_hinweis"))
+        feld(t("dlg.kandidaten"), self.kandidaten, t("dlg.kandidaten_hinweis"))
+        feld(t("dlg.max_atome"), self.max_atome, t("dlg.max_atome_hinweis"))
 
-        ttk.Label(rahmen, text="Verhältnis-Filter").grid(row=zeile, column=0, sticky="w", pady=3)
+        ttk.Label(rahmen, text=t("dlg.verhaeltnis")).grid(row=zeile, column=0, sticky="w", pady=3)
 
         filterzeile = ttk.Frame(rahmen)
         filterzeile.grid(row=zeile, column=1, columnspan=2, sticky="w", padx=(10, 0))
 
-        ttk.Checkbutton(filterzeile, text="aktiv, höchstens", variable=self.filter_aktiv).pack(side="left")
+        ttk.Checkbutton(filterzeile, text=t("dlg.filter_aktiv"), variable=self.filter_aktiv).pack(side="left")
         ttk.Entry(filterzeile, textvariable=self.verhaeltnis, width=4).pack(side="left", padx=6)
-        ttk.Label(filterzeile, text="schlechte je gutes Molekül", style="Gedimmt.TLabel").pack(side="left")
+        ttk.Label(filterzeile, text=t("dlg.filter_einheit"), style="Gedimmt.TLabel").pack(side="left")
 
         zeile += 1
 
-        ttk.Label(rahmen, text="Automatik-Modus").grid(row=zeile, column=0, sticky="nw", pady=3)
+        ttk.Label(rahmen, text=t("dlg.modus")).grid(row=zeile, column=0, sticky="nw", pady=3)
 
         modus = ttk.Frame(rahmen)
         modus.grid(row=zeile, column=1, columnspan=2, sticky="w", padx=(10, 0))
 
-        ttk.Radiobutton(modus, text="Zufall (Best-of-N)", value="zufall", variable=self.modus).pack(anchor="w")
-        ttk.Radiobutton(modus, text="Konstruktion (Schritt für Schritt mit RDKit)", value="konstruktion", variable=self.modus).pack(anchor="w")
+        ttk.Radiobutton(modus, text=t("dlg.modus_zufall"), value="zufall", variable=self.modus).pack(anchor="w")
+        ttk.Radiobutton(modus, text=t("dlg.modus_konstruktion"), value="konstruktion", variable=self.modus).pack(anchor="w")
 
         zeile += 1
 
         ttk.Checkbutton(
             rahmen,
-            text="Endlos: Automatikphase läuft, bis du auf Stopp drückst",
+            text=t("dlg.endlos"),
             variable=self.endlos
         ).grid(row=zeile, column=0, columnspan=3, sticky="w", pady=(8, 0))
 
@@ -124,13 +127,13 @@ class EinstellungenDialog(tk.Toplevel):
 
         ttk.Checkbutton(
             rahmen,
-            text="Gedächtnis automatisch sichern",
+            text=t("dlg.autosave"),
             variable=self.autosave
         ).grid(row=zeile, column=0, columnspan=3, sticky="w")
 
         zeile += 1
 
-        ttk.Label(rahmen, text=f"nach {AUTOSAVE_PFAD}", style="Gedimmt.TLabel").grid(
+        ttk.Label(rahmen, text=t("dlg.autosave_pfad", pfad=AUTOSAVE_PFAD), style="Gedimmt.TLabel").grid(
             row=zeile, column=0, columnspan=3, sticky="w", padx=(24, 0)
         )
 
@@ -144,9 +147,9 @@ class EinstellungenDialog(tk.Toplevel):
         knoepfe = ttk.Frame(rahmen)
         knoepfe.grid(row=zeile, column=0, columnspan=3, sticky="e", pady=(12, 0))
 
-        ttk.Button(knoepfe, text="Standardwerte", command=lambda: self._fuelle(LaborConfig())).pack(side="left", padx=(0, 24))
-        ttk.Button(knoepfe, text="Abbrechen", command=self.destroy).pack(side="left", padx=(0, 8))
-        ttk.Button(knoepfe, text="OK", style="Accent.TButton", command=self._uebernehmen).pack(side="left")
+        ttk.Button(knoepfe, text=t("dlg.standardwerte"), command=lambda: self._fuelle(LaborConfig())).pack(side="left", padx=(0, 24))
+        ttk.Button(knoepfe, text=t("dlg.abbrechen"), command=self.destroy).pack(side="left", padx=(0, 8))
+        ttk.Button(knoepfe, text=t("dlg.ok"), style="Accent.TButton", command=self._uebernehmen).pack(side="left")
 
     # ------------------------------------------------------
     # Werte
@@ -174,12 +177,12 @@ class EinstellungenDialog(tk.Toplevel):
     def _werte(self):
 
         return {
-            "beobachtungen": _ganzzahl(self.beobachtungen.get(), "Beobachtungen"),
-            "automatik_experimente": _ganzzahl(self.automatik.get(), "Automatik-Experimente"),
-            "kandidaten_pro_molekuel": _ganzzahl(self.kandidaten.get(), "Kandidaten pro Molekül"),
-            "max_atome": _ganzzahl(self.max_atome.get(), "Max. Atome"),
+            "beobachtungen": _ganzzahl(self.beobachtungen.get(), t("dlg.beobachtungen")),
+            "automatik_experimente": _ganzzahl(self.automatik.get(), t("dlg.automatik")),
+            "kandidaten_pro_molekuel": _ganzzahl(self.kandidaten.get(), t("dlg.kandidaten")),
+            "max_atome": _ganzzahl(self.max_atome.get(), t("dlg.max_atome")),
             "ziel_verhaeltnis_neg_zu_pos": (
-                _ganzzahl(self.verhaeltnis.get(), "Verhältnis-Filter")
+                _ganzzahl(self.verhaeltnis.get(), t("dlg.verhaeltnis"))
                 if self.filter_aktiv.get() else None
             ),
             "automatik_modus": self.modus.get(),
