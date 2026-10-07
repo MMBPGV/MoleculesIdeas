@@ -11,21 +11,31 @@
 # Die Standardwerte hier gelten fuer neuen Code. Die Konstanten oben in
 # labor.py sind nur noch Rueckwaertskompatibilitaet fuer Aufrufer, die
 # sie noch ueberschreiben (standard_config() in labor.py).
+#
+# Fehlermeldungen (ValueError) kommen aus chemlabor/texte.py und sind
+# daher in der aktiven Sprache formuliert.
 
 from dataclasses import dataclass, replace
 from typing import Optional
+
+from chemlabor.texte import t
 
 
 AUTOMATIK_MODI = ("zufall", "konstruktion")
 
 
-def _ganzzahl(name, wert, minimum):
+def _ganzzahl(feld, wert, minimum):
+    """feld ist der Schluessel des Feldnamens in texte.py (ohne 'feld.')."""
+
+    name = t(f"feld.{feld}")
 
     if isinstance(wert, bool) or not isinstance(wert, int):
-        raise ValueError(f"{name} muss eine ganze Zahl sein (ist: {wert!r}).")
+        raise ValueError(t("config.ganzzahl", name=name, wert=repr(wert)))
 
     if wert < minimum:
-        raise ValueError(f"{name} muss mindestens {minimum} sein (ist: {wert}).")
+        raise ValueError(
+            t("config.minimum", name=name, minimum=minimum, wert=wert)
+        )
 
 
 @dataclass
@@ -78,24 +88,27 @@ class LaborConfig:
         """Prueft alle Werte und gibt self zurueck (zum Verketten).
         Wirft ValueError mit verstaendlicher Meldung."""
 
-        _ganzzahl("Beobachtungen", self.beobachtungen, 1)
-        _ganzzahl("Automatik-Experimente", self.automatik_experimente, 1)
-        _ganzzahl("Kandidaten pro Molekuel", self.kandidaten_pro_molekuel, 1)
-        _ganzzahl("Max. Atome", self.max_atome, 2)
-        _ganzzahl("Verhaeltnis-Sockel", self.verhaeltnis_sockel, 0)
-        _ganzzahl("Versuchsfaktor", self.versuche_faktor, 1)
-        _ganzzahl("Anzeigeschwelle", self.stabil_anzeige_schwelle, 0)
-        _ganzzahl("Fehler-Log-Limit", self.fehler_log_limit, 0)
-        _ganzzahl("Endlos-Log-Intervall", self.automatik_endlos_log_intervall, 1)
-        _ganzzahl("Autosave-Intervall", self.autosave_intervall, 1)
+        _ganzzahl("beobachtungen", self.beobachtungen, 1)
+        _ganzzahl("automatik_experimente", self.automatik_experimente, 1)
+        _ganzzahl("kandidaten", self.kandidaten_pro_molekuel, 1)
+        _ganzzahl("max_atome", self.max_atome, 2)
+        _ganzzahl("verhaeltnis_sockel", self.verhaeltnis_sockel, 0)
+        _ganzzahl("versuche_faktor", self.versuche_faktor, 1)
+        _ganzzahl("anzeigeschwelle", self.stabil_anzeige_schwelle, 0)
+        _ganzzahl("fehler_log_limit", self.fehler_log_limit, 0)
+        _ganzzahl("endlos_log", self.automatik_endlos_log_intervall, 1)
+        _ganzzahl("autosave_intervall", self.autosave_intervall, 1)
 
         if self.ziel_verhaeltnis_neg_zu_pos is not None:
-            _ganzzahl("Verhaeltnis Neg:Pos", self.ziel_verhaeltnis_neg_zu_pos, 0)
+            _ganzzahl("verhaeltnis", self.ziel_verhaeltnis_neg_zu_pos, 0)
 
         if self.automatik_modus not in AUTOMATIK_MODI:
             raise ValueError(
-                f"Automatik-Modus muss einer von {AUTOMATIK_MODI} sein "
-                f"(ist: {self.automatik_modus!r})."
+                t(
+                    "config.modus",
+                    modi=AUTOMATIK_MODI,
+                    wert=repr(self.automatik_modus)
+                )
             )
 
         return self

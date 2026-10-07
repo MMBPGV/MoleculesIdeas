@@ -12,6 +12,8 @@
 # Einstellungen stehen in einer LaborConfig (siehe config.py) und
 # werden ChemLabor uebergeben - nichts wird mehr ueber Modulkonstanten
 # gesetzt. Die bisherige GUI bleibt in app.py erhalten (start_gui_alt.py).
+#
+# Alle sichtbaren Texte kommen aus chemlabor/texte.py.
 
 import queue
 import threading
@@ -28,6 +30,7 @@ from chemlabor.gui.tab_live import TabLive
 from chemlabor.gui.theme import FARBEN, ergaenze_style, konfiguriere_style
 from chemlabor.ki.gedaechtnis import KIGedaechtnis
 from chemlabor.labor import ChemLabor
+from chemlabor.texte import t
 
 
 LOG_MAX_ZEILEN = 2000
@@ -38,13 +41,18 @@ TABELLE_MIN_ABSTAND = 0.4
 FERTIG = "__FERTIG__"
 
 
+def _json_dateitypen():
+
+    return [(t("datei.json"), "*.json"), (t("datei.alle"), "*.*")]
+
+
 class Hauptfenster:
 
     def __init__(self, root, config=None):
 
         self.root = root
 
-        root.title("Chemie-Labor")
+        root.title(t("fenster.titel"))
         root.geometry("1200x780")
         root.minsize(920, 600)
 
@@ -86,16 +94,16 @@ class Hauptfenster:
         kopf = ttk.Frame(self.root, padding=(10, 8, 10, 0))
         kopf.pack(fill="x")
 
-        self.start_button = ttk.Button(kopf, text="▶  Start", style="Accent.TButton", command=self.start)
+        self.start_button = ttk.Button(kopf, text=t("fenster.start"), style="Accent.TButton", command=self.start)
         self.start_button.pack(side="left", padx=(0, 6))
 
-        self.stop_button = ttk.Button(kopf, text="■  Stopp", style="Danger.TButton", command=self.stopp, state="disabled")
+        self.stop_button = ttk.Button(kopf, text=t("fenster.stopp"), style="Danger.TButton", command=self.stopp, state="disabled")
         self.stop_button.pack(side="left", padx=(0, 16))
 
-        self.einstellungen_button = ttk.Button(kopf, text="⚙  Einstellungen…", command=self.einstellungen_oeffnen)
+        self.einstellungen_button = ttk.Button(kopf, text=t("fenster.einstellungen"), command=self.einstellungen_oeffnen)
         self.einstellungen_button.pack(side="left", padx=(0, 6))
 
-        self.gedaechtnis_button = ttk.Menubutton(kopf, text="Gedächtnis ▾")
+        self.gedaechtnis_button = ttk.Menubutton(kopf, text=t("fenster.gedaechtnis"))
         self.gedaechtnis_button.pack(side="left")
 
         menue = tk.Menu(
@@ -104,15 +112,15 @@ class Hauptfenster:
             activebackground=FARBEN["auswahl"], activeforeground=FARBEN["text"]
         )
 
-        menue.add_command(label="Speichern…", command=self.gedaechtnis_speichern)
-        menue.add_command(label="Laden…", command=self.gedaechtnis_laden)
-        menue.add_command(label="Mehrere zusammenführen…", command=self.gedaechtnis_zusammenfuehren)
+        menue.add_command(label=t("fenster.menue_speichern"), command=self.gedaechtnis_speichern)
+        menue.add_command(label=t("fenster.menue_laden"), command=self.gedaechtnis_laden)
+        menue.add_command(label=t("fenster.menue_zusammenfuehren"), command=self.gedaechtnis_zusammenfuehren)
         menue.add_separator()
-        menue.add_command(label="Geladenes Gedächtnis verwerfen", command=self.gedaechtnis_verwerfen)
+        menue.add_command(label=t("fenster.menue_verwerfen"), command=self.gedaechtnis_verwerfen)
 
         self.gedaechtnis_button["menu"] = menue
 
-        self.status_label = ttk.Label(kopf, text="Bereit.")
+        self.status_label = ttk.Label(kopf, text=t("fenster.bereit"))
         self.status_label.pack(side="right")
 
         info = ttk.Frame(self.root, padding=(12, 4, 10, 6))
@@ -130,10 +138,10 @@ class Hauptfenster:
         self.notebook.pack(fill="both", expand=True, padx=6, pady=(0, 4))
 
         self.tab_live = TabLive(self.notebook, self.modell)
-        self.notebook.add(self.tab_live, text="Live")
+        self.notebook.add(self.tab_live, text=t("fenster.tab_live"))
 
         self.tab_ergebnisse = TabErgebnisse(self.notebook, self.modell, log=self.log)
-        self.notebook.add(self.tab_ergebnisse, text="Ergebnisse")
+        self.notebook.add(self.tab_ergebnisse, text=t("fenster.tab_ergebnisse"))
 
         self.notebook.bind("<<NotebookTabChanged>>", lambda _e: self._render(erzwingen=True))
 
@@ -147,10 +155,10 @@ class Hauptfenster:
 
         self.log_sichtbar = True
 
-        self.log_toggle = ttk.Button(leiste, text="Log ▾", command=self._log_umschalten, width=8)
+        self.log_toggle = ttk.Button(leiste, text=t("fenster.log_offen"), command=self._log_umschalten, width=8)
         self.log_toggle.pack(side="left")
 
-        ttk.Button(leiste, text="Leeren", command=self._log_leeren, width=8).pack(side="left", padx=6)
+        ttk.Button(leiste, text=t("fenster.log_leeren"), command=self._log_leeren, width=8).pack(side="left", padx=6)
 
         self.log_text = scrolledtext.ScrolledText(
             self.log_rahmen, wrap="word", height=6, state="disabled",
@@ -169,9 +177,9 @@ class Hauptfenster:
         self.config_label.config(text=config_text(self.config))
 
         if self.geladenes_gedaechtnis is not None:
-            text = f"Gedächtnis: geladen ({self.geladenes_gedaechtnis.beobachtungen} Beobachtungen)"
+            text = t("fenster.gedaechtnis_geladen", n=self.geladenes_gedaechtnis.beobachtungen)
         else:
-            text = "Gedächtnis: neu"
+            text = t("fenster.gedaechtnis_neu")
 
         self.gedaechtnis_label.config(text=text)
 
@@ -214,7 +222,7 @@ class Hauptfenster:
                 config=lauf_config
             )
         except Exception as fehler:
-            self._setze_status(f"Labor konnte nicht gestartet werden: {fehler}")
+            self._setze_status(t("fenster.labor_fehler_start", fehler=fehler))
             return
 
         self._log_leeren()
@@ -232,15 +240,17 @@ class Hauptfenster:
             labor.gedaechtnis = self.geladenes_gedaechtnis
 
             self.log(
-                f"Geladenes Gedächtnis übernommen "
-                f"({self.geladenes_gedaechtnis.beobachtungen} frühere Beobachtungen)."
+                t("fenster.gedaechtnis_uebernommen", n=self.geladenes_gedaechtnis.beobachtungen)
             )
 
         if lauf_config.autosave_pfad:
 
             self.log(
-                f"Automatisches Sichern aktiv - alle {lauf_config.autosave_intervall} "
-                f"Experimente nach '{lauf_config.autosave_pfad}'."
+                t(
+                    "fenster.autosave_aktiv",
+                    n=lauf_config.autosave_intervall,
+                    pfad=lauf_config.autosave_pfad
+                )
             )
 
         self.laeuft = True
@@ -249,7 +259,9 @@ class Hauptfenster:
         self.stop_button.config(state="normal")
         self.einstellungen_button.config(state="disabled")
 
-        self._setze_status("Läuft (Endlos)..." if lauf_config.endlos else "Läuft...")
+        self._setze_status(
+            t("fenster.laeuft_endlos") if lauf_config.endlos else t("fenster.laeuft")
+        )
 
         self._labor_faden = threading.Thread(target=self._labor_thread, daemon=True)
         self._labor_faden.start()
@@ -259,7 +271,7 @@ class Hauptfenster:
         try:
             self.labor.starten()
         except Exception as fehler:
-            self.fortschritt_queue.put(f"Fehler: {fehler}")
+            self.fortschritt_queue.put(t("fenster.fehler_praefix", fehler=fehler))
         finally:
             self.fortschritt_queue.put(FERTIG)
 
@@ -269,7 +281,7 @@ class Hauptfenster:
             self.labor.stoppen()
 
         self.stop_button.config(state="disabled")
-        self._setze_status("Stoppe...")
+        self._setze_status(t("fenster.stoppe"))
 
     def schliessen(self):
         """Stoppt Labor und PubChem-Pruefung und wartet kurz auf deren
@@ -332,7 +344,7 @@ class Hauptfenster:
             self.stop_button.config(state="disabled")
             self.einstellungen_button.config(state="normal")
 
-            self._setze_status("Fertig.")
+            self._setze_status(t("fenster.fertig"))
 
             self._render(erzwingen=True)
 
@@ -378,12 +390,12 @@ class Hauptfenster:
     def gedaechtnis_speichern(self):
 
         if self.labor is None:
-            self._setze_status("Kein Gedächtnis vorhanden - erst einen Lauf starten.")
+            self._setze_status(t("fenster.kein_gedaechtnis"))
             return
 
         pfad = filedialog.asksaveasfilename(
-            title="Gedächtnis speichern", defaultextension=".json",
-            filetypes=[("JSON-Dateien", "*.json"), ("Alle Dateien", "*.*")]
+            title=t("fenster.speichern_titel"), defaultextension=".json",
+            filetypes=_json_dateitypen()
         )
 
         if not pfad:
@@ -391,19 +403,19 @@ class Hauptfenster:
 
         try:
             self.labor.speichere_gedaechtnis(pfad)
-            self._setze_status(f"Gedächtnis gespeichert: {pfad}")
+            self._setze_status(t("fenster.gespeichert", pfad=pfad))
         except OSError as fehler:
-            self._setze_status(f"Speichern fehlgeschlagen: {fehler}")
+            self._setze_status(t("fenster.speichern_fehler", fehler=fehler))
 
     def gedaechtnis_laden(self):
 
         if self.laeuft:
-            self._setze_status("Erst den laufenden Lauf stoppen, bevor ein Gedächtnis geladen wird.")
+            self._setze_status(t("fenster.laden_erst_stoppen"))
             return
 
         pfad = filedialog.askopenfilename(
-            title="Gedächtnis laden",
-            filetypes=[("JSON-Dateien", "*.json"), ("Alle Dateien", "*.*")]
+            title=t("fenster.laden_titel"),
+            filetypes=_json_dateitypen()
         )
 
         if not pfad:
@@ -412,35 +424,35 @@ class Hauptfenster:
         try:
             self.geladenes_gedaechtnis = KIGedaechtnis.laden(pfad)
         except (OSError, ValueError, KeyError) as fehler:
-            self._setze_status(f"Laden fehlgeschlagen: {fehler}")
+            self._setze_status(t("fenster.laden_fehler", fehler=fehler))
             return
 
         self._aktualisiere_beschriftungen()
 
-        self._setze_status("Gedächtnis geladen - wird beim nächsten Start verwendet.")
+        self._setze_status(t("fenster.geladen"))
 
     def gedaechtnis_zusammenfuehren(self):
 
         if self.laeuft:
-            self._setze_status("Erst den laufenden Lauf stoppen, bevor Gedächtnisse zusammengeführt werden.")
+            self._setze_status(t("fenster.merge_erst_stoppen"))
             return
 
         pfade = filedialog.askopenfilenames(
-            title="Gedächtnisse zum Zusammenführen auswählen (mind. 2)",
-            filetypes=[("JSON-Dateien", "*.json"), ("Alle Dateien", "*.*")]
+            title=t("fenster.merge_titel"),
+            filetypes=_json_dateitypen()
         )
 
         if not pfade:
             return
 
         if len(pfade) < 2:
-            self._setze_status("Bitte mindestens 2 Dateien auswählen.")
+            self._setze_status(t("fenster.merge_zu_wenig"))
             return
 
         try:
             kollektiv = KIGedaechtnis.zusammenfuehren(list(pfade))
         except (OSError, ValueError, KeyError) as fehler:
-            self._setze_status(f"Zusammenführen fehlgeschlagen: {fehler}")
+            self._setze_status(t("fenster.merge_fehler", fehler=fehler))
             return
 
         self.geladenes_gedaechtnis = kollektiv
@@ -448,8 +460,8 @@ class Hauptfenster:
         self._aktualisiere_beschriftungen()
 
         speicherpfad = filedialog.asksaveasfilename(
-            title="Zusammengeführtes Gedächtnis speichern (optional)", defaultextension=".json",
-            filetypes=[("JSON-Dateien", "*.json"), ("Alle Dateien", "*.*")]
+            title=t("fenster.merge_speichern_titel"), defaultextension=".json",
+            filetypes=_json_dateitypen()
         )
 
         if speicherpfad:
@@ -457,25 +469,24 @@ class Hauptfenster:
             try:
                 kollektiv.speichern(speicherpfad)
             except OSError as fehler:
-                self._setze_status(f"Zusammengeführt, aber Speichern fehlgeschlagen: {fehler}")
+                self._setze_status(t("fenster.merge_speichern_fehler", fehler=fehler))
                 return
 
         self._setze_status(
-            f"{len(pfade)} Dateien zusammengeführt ({kollektiv.beobachtungen} Beobachtungen) "
-            f"- wird beim nächsten Start verwendet."
+            t("fenster.merge_fertig", n=len(pfade), b=kollektiv.beobachtungen)
         )
 
     def gedaechtnis_verwerfen(self):
 
         if self.laeuft:
-            self._setze_status("Erst den laufenden Lauf stoppen.")
+            self._setze_status(t("fenster.verwerfen_erst_stoppen"))
             return
 
         self.geladenes_gedaechtnis = None
 
         self._aktualisiere_beschriftungen()
 
-        self._setze_status("Geladenes Gedächtnis verworfen - der nächste Lauf beginnt neu.")
+        self._setze_status(t("fenster.verworfen"))
 
     # ------------------------------------------------------
     # Log
@@ -504,10 +515,10 @@ class Hauptfenster:
 
         if self.log_sichtbar:
             self.log_text.pack_forget()
-            self.log_toggle.config(text="Log ▸")
+            self.log_toggle.config(text=t("fenster.log_zu"))
         else:
             self.log_text.pack(fill="x", pady=(4, 0))
-            self.log_toggle.config(text="Log ▾")
+            self.log_toggle.config(text=t("fenster.log_offen"))
 
         self.log_sichtbar = not self.log_sichtbar
 

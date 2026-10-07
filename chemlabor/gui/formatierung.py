@@ -1,22 +1,15 @@
 # ==========================================================
-# labor_format.py
+# formatierung.py
 # ==========================================================
 #
-# Reine Formatierungs-/Darstellungslogik fuer das Chemie-Labor, OHNE
-# jede Tkinter-Abhaengigkeit.
-#
-# Frueher lag formatiere_probleme() zwar schon ausserhalb der
-# LaborGUI-Klasse in labor_gui.py, aber im selben MODUL wie
-# "import tkinter" - jeder Import dieser Funktion (z.B. aus einem
-# Test) zog damit tkinter als harte Abhaengigkeit mit, obwohl die
-# Funktion selbst keins braucht. In einer Umgebung ohne Display/
-# Tkinter (z.B. viele CI-Systeme) liess sie sich dadurch gar nicht
-# importieren, geschweige denn testen - genau die Faehigkeit, die
-# durch das Auslagern eigentlich hergestellt werden sollte.
-#
-# labor_gui.py importiert diese Funktion jetzt von hier, statt sie
-# selbst zu definieren.
-# ==========================================================
+# Reine Formatierungs-/Darstellungslogik OHNE tkinter-Abhaengigkeit
+# (damit sie sich ohne Display testen laesst).
+
+from chemlabor.gui.kritiker_texte import (
+    uebersetze_modell,
+    uebersetze_parameter,
+    uebersetze_wert,
+)
 
 
 def formatiere_probleme(probleme):
@@ -24,9 +17,9 @@ def formatiere_probleme(probleme):
     {"modell": "Radikal", "atom": 3, "ungepaarte_elektronen": 1}) in
     lesbare Zeilen fuer die Detailansicht um.
 
-    Hier sass der urspruengliche Crash-Bug: analyse["probleme"]
-    enthaelt Dicts, keine Strings - " - " + p warf einen TypeError bei
-    jedem Molekuel mit mindestens einem Problem."""
+    Modellnamen, Parameternamen und Text-Werte werden bei nicht-
+    deutscher Oberflaeche uebersetzt (siehe kritiker_texte.py); bei
+    deutscher Oberflaeche ist die Ausgabe wie bisher."""
 
     zeilen = []
 
@@ -36,8 +29,11 @@ def formatiere_probleme(probleme):
 
         rest = {k: v for k, v in p.items() if k != "modell"}
 
-        details = ", ".join(f"{k}={v}" for k, v in rest.items())
+        details = ", ".join(
+            f"{uebersetze_parameter(k)}={uebersetze_wert(v)}"
+            for k, v in rest.items()
+        )
 
-        zeilen.append(f" - [{modell}] {details}")
+        zeilen.append(f" - [{uebersetze_modell(modell)}] {details}")
 
     return zeilen

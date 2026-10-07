@@ -217,3 +217,8 @@ def molmasse(molekuel):
         return None
 
     return rdMolDescriptors.CalcExactMolWt(m)
+
+
+# ==========================================================
+# End of file
+# ==========================================================
