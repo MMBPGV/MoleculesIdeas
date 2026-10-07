@@ -93,7 +93,19 @@ def _pruefe_cached(serialisiert):
     Sanitize-Aufrufe fuer dieselbe Struktur.
     """
 
-    molekuel = json.loads(serialisiert)
+    daten = json.loads(serialisiert)
+
+    molekuel = {
+        "atoms": [
+            {"id": i, "element": e, "valence": v, "used_valence": u}
+            for i, e, v, u in daten["atoms"]
+        ],
+        "bonds": [
+            {"atom1": a, "atom2": b, "order": o}
+            for a, b, o in daten["bonds"]
+        ],
+    }
+
     return _pruefe_raw(molekuel)
 
 
