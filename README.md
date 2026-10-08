@@ -8,6 +8,62 @@ The project provides an experimental environment for generating molecular struct
 
 ---
 
+## Table of Contents
+
+* [Chemistry Lab](#chemistry-lab)
+* [Features](#features)
+* [Installation](#installation)
+
+  * [Requirements](#requirements)
+  * [Linux](#linux)
+  * [Windows](#windows)
+  * [macOS](#macos)
+  * [Virtual Environment](#virtual-environment)
+  * [Install Python Dependencies](#install-python-dependencies)
+* [Running the Project](#running-the-project)
+
+  * [Graphical Interface](#graphical-interface)
+  * [Console Mode](#console-mode)
+  * [Python Module Entry Point](#python-module-entry-point)
+* [How It Works](#how-it-works)
+* [Chemical Evaluation](#chemical-evaluation)
+
+  * [Critic](#critic)
+  * [Chemical Rules](#chemical-rules)
+  * [RDKit](#rdkit)
+* [Statistical Memory](#statistical-memory)
+
+  * [Local Memory Data](#local-memory-data)
+* [Novelty Checking](#novelty-checking)
+
+  * [Important Limitation](#important-limitation)
+* [Graphical User Interface](#graphical-user-interface)
+* [Configuration](#configuration)
+* [Project Structure](#project-structure)
+* [Architecture](#architecture)
+
+  * [Chemistry](#chemistry)
+  * [Statistical System](#statistical-system)
+  * [GUI](#gui)
+  * [Laboratory](#laboratory)
+  * [Configuration](#configuration-1)
+  * [Paths and Data](#paths-and-data)
+* [Tests](#tests)
+* [Project Data](#project-data)
+
+  * [Periodic Table](#periodic-table)
+  * [Memory Directory](#memory-directory)
+  * [Runtime Data](#runtime-data)
+* [Development Files](#development-files)
+* [Tree Utility](#tree-utility)
+* [Scientific Limitations](#scientific-limitations)
+* [Future Development](#future-development)
+* [AI-Assisted Development](#ai-assisted-development)
+* [License](#license)
+* [Disclaimer](#disclaimer)
+
+---
+
 ## Features
 
 * Automated generation of molecular structures
@@ -22,6 +78,312 @@ The project provides an experimental environment for generating molecular struct
 * Configurable laboratory parameters
 * Automated tests
 * Persistent project data
+
+---
+
+## Installation
+
+### Requirements
+
+Chemistry Lab requires:
+
+* Python 3
+* `pip`
+* `venv`
+* Tkinter for the graphical interface
+* The Python packages listed in `requirements.txt`
+
+Git is recommended if you want to clone the project directly from GitHub.
+
+---
+
+### Linux
+
+On Debian/Ubuntu-based Linux distributions, install Python, Git, Tkinter, and the virtual-environment package:
+
+```bash
+sudo apt update
+sudo apt install python3 python3-pip python3-venv python3-tk git
+```
+
+Clone the repository:
+
+```bash
+git clone https://github.com/MMBPGV/MoleculesIdeas.git
+cd MoleculesIdeas
+```
+
+Create a virtual environment:
+
+```bash
+python3 -m venv .venv
+```
+
+Activate it:
+
+```bash
+source .venv/bin/activate
+```
+
+Install the project dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Start Chemistry Lab:
+
+```bash
+python3 start_gui.py
+```
+
+Alternatively, the project can be started as a Python module:
+
+```bash
+python3 -m chemlabor
+```
+
+The console version can be started with:
+
+```bash
+python3 start_konsole.py
+```
+
+#### Linux troubleshooting
+
+If Python reports:
+
+```text
+ModuleNotFoundError: No module named '_tkinter'
+```
+
+install Tkinter:
+
+```bash
+sudo apt install python3-tk
+```
+
+Then start the application again:
+
+```bash
+python3 start_gui.py
+```
+
+---
+
+### Windows
+
+Install Python 3 from the official Python distribution.
+
+During installation, make sure Python is added to the system `PATH`.
+
+Clone the repository:
+
+```powershell
+git clone https://github.com/MMBPGV/MoleculesIdeas.git
+cd MoleculesIdeas
+```
+
+Create a virtual environment:
+
+```powershell
+python -m venv .venv
+```
+
+Activate it:
+
+```powershell
+.venv\Scripts\activate
+```
+
+Install the dependencies:
+
+```powershell
+pip install -r requirements.txt
+```
+
+Start the graphical interface:
+
+```powershell
+python start_gui.py
+```
+
+The console version can be started with:
+
+```powershell
+python start_konsole.py
+```
+
+Tkinter is normally included with the standard Windows Python installation.
+
+---
+
+### macOS
+
+Install Python 3 and Git using your preferred method.
+
+Clone the repository:
+
+```bash
+git clone https://github.com/MMBPGV/MoleculesIdeas.git
+cd MoleculesIdeas
+```
+
+Create a virtual environment:
+
+```bash
+python3 -m venv .venv
+```
+
+Activate it:
+
+```bash
+source .venv/bin/activate
+```
+
+Install the dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Start the graphical interface:
+
+```bash
+python3 start_gui.py
+```
+
+The console version can be started with:
+
+```bash
+python3 start_konsole.py
+```
+
+---
+
+### Virtual Environment
+
+Using a virtual environment is recommended because it keeps the project's Python dependencies separate from the system Python installation.
+
+Create the environment:
+
+```bash
+python3 -m venv .venv
+```
+
+Activate it on Linux/macOS:
+
+```bash
+source .venv/bin/activate
+```
+
+On Windows:
+
+```powershell
+.venv\Scripts\activate
+```
+
+After activation, the shell usually displays:
+
+```text
+(.venv)
+```
+
+To leave the virtual environment:
+
+```bash
+deactivate
+```
+
+---
+
+### Install Python Dependencies
+
+With the virtual environment activated:
+
+```bash
+pip install -r requirements.txt
+```
+
+The exact dependencies are defined in:
+
+```text
+requirements.txt
+```
+
+This ensures that the required Python packages can be installed without manually installing each package.
+
+---
+
+## Running the Project
+
+The project can be started from the repository root.
+
+The repository has the following main entry points:
+
+```text
+start_gui.py
+start_konsole.py
+chemlabor/__main__.py
+```
+
+### Graphical Interface
+
+Start the graphical interface with:
+
+```bash
+python start_gui.py
+```
+
+On systems where `python` refers to Python 3, this is sufficient.
+
+Linux users can use:
+
+```bash
+python3 start_gui.py
+```
+
+The GUI provides access to the laboratory, experiment configuration, generated molecules, results, and visualizations.
+
+---
+
+### Console Mode
+
+Start the console interface with:
+
+```bash
+python start_konsole.py
+```
+
+On Linux:
+
+```bash
+python3 start_konsole.py
+```
+
+The console interface provides an alternative way to interact with the laboratory without using the graphical interface.
+
+---
+
+### Python Module Entry Point
+
+The package also provides:
+
+```text
+chemlabor/__main__.py
+```
+
+This allows the project to be started as a Python module:
+
+```bash
+python -m chemlabor
+```
+
+On Linux:
+
+```bash
+python3 -m chemlabor
+```
 
 ---
 
@@ -117,7 +479,7 @@ This approach is intended to keep the system relatively transparent while still 
 
 ### Local Memory Data
 
-The directory
+The directory:
 
 ```text
 daten/gedaechtnis/
@@ -125,9 +487,11 @@ daten/gedaechtnis/
 
 is reserved for locally generated memory data.
 
-The current public repository does not contain a previously accumulated memory state.
+The public repository does not contain a previously accumulated memory state.
 
 This means that experiments can start with a clean memory and generate their own data locally.
+
+Generated memory data is intentionally kept local and is not required to clone or install the project.
 
 ---
 
@@ -186,39 +550,6 @@ This allows the core laboratory system to be used independently of the graphical
 
 ---
 
-## Console Mode
-
-The project also provides a console-based interface.
-
-The main entry points are:
-
-```text
-start_gui.py
-start_konsole.py
-```
-
-Start the graphical interface with:
-
-```bash
-python start_gui.py
-```
-
-Start the console version with:
-
-```bash
-python start_konsole.py
-```
-
-The package also contains:
-
-```text
-chemlabor/__main__.py
-```
-
-which provides a Python module entry point.
-
----
-
 ## Configuration
 
 Configuration is handled by:
@@ -238,7 +569,7 @@ This allows experiment parameters to be changed without directly modifying the c
 The current public project structure is:
 
 ```text
-chemistry-lab/
+MoleculesIdeas/
 │
 ├── chemlabor/
 │   ├── chemie/
@@ -271,10 +602,10 @@ chemistry-lab/
 │   ├── __main__.py
 │   ├── config.py
 │   ├── labor.py
-│   └── pfade.py
+│   ├── pfade.py
+│   └── texte.py
 │
 ├── daten/
-│   ├── gedaechtnis/
 │   └── periodensystem.json
 │
 ├── tests/
@@ -286,8 +617,13 @@ chemistry-lab/
 ├── README.md
 ├── start_gui.py
 ├── start_konsole.py
-└── tree.py
+├── tree.py
+├── requirements.txt
+├── LICENSE
+└── .gitignore
 ```
+
+Runtime-generated directories and files are not included in the public repository.
 
 ---
 
@@ -385,6 +721,15 @@ python tests/test_gui_modell.py
 python tests/test_gui_smoke.py
 ```
 
+On Linux:
+
+```bash
+python3 tests/test_architektur.py
+python3 tests/test_config.py
+python3 tests/test_gui_modell.py
+python3 tests/test_gui_smoke.py
+```
+
 The tests are intended to detect implementation problems and regressions during development.
 
 ---
@@ -417,7 +762,7 @@ Some components can generate additional local runtime data.
 
 For example, the novelty system can create a local database cache.
 
-Runtime-generated data is kept outside the public project.
+Runtime-generated data is kept outside the public project and is not required for installation.
 
 ---
 
@@ -505,6 +850,7 @@ Possible future improvements include:
 * More advanced molecular visualization
 * Improved experiment management
 * Additional chemical data sources
+
 The current architecture is intended to make these components independently extensible.
 
 ---
@@ -524,39 +870,7 @@ AI assistance was used for tasks such as:
 
 The resulting code is part of an experimental development project and should be reviewed and tested independently.
 
----
-
-## Requirements
-
-The project requires Python.
-
-Some functionality additionally depends on external Python packages, particularly RDKit.
-
-A typical development environment can be created with:
-
-```bash
-python -m venv .venv
-```
-
-Activate the environment and install the required dependencies according to the project's current setup.
-
----
-
-## Running the Project
-
-Start the graphical interface:
-
-```bash
-python start_gui.py
-```
-
-Start the console version:
-
-```bash
-python start_konsole.py
-```
-
-For development and testing, execute the individual test files from the project root.
+The project author defines the goals, evaluates results, makes implementation decisions, and tests the resulting software.
 
 ---
 
