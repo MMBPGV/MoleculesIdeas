@@ -17,6 +17,7 @@
 from collections import deque
 
 from chemlabor.chemie import rdkit_bruecke as rb
+from chemlabor.chemie.widerspruch import klassifiziere
 from chemlabor.gui.formatierung import formatiere_probleme
 from chemlabor.gui.kritiker_texte import uebersetze_text, uebersetze_urteil
 from chemlabor.ki.gedaechtnis import molekuel_signatur
@@ -27,7 +28,9 @@ from chemlabor.texte import t, t_oder, zahl
 # Phasen-Filter: "alle" oder ein Phasenwert, wie ChemLabor ihn liefert
 PHASEN = ("alle", "Beobachtung", "Automatik")
 
-FILTER = ("alle", "top10", "top50", "stabil", "instabil")
+# "w_milde" / "w_streng": Widersprueche zwischen Kritiker und RDKit
+# (siehe chemie/widerspruch.py)
+FILTER = ("alle", "top10", "top50", "stabil", "instabil", "w_milde", "w_streng")
 
 # Anzeige-Filter fuer die PubChem-Spalte -> erlaubte Status (None = alle)
 NEUHEIT_FILTER = {
@@ -154,6 +157,12 @@ class ErgebnisModell:
             ergebnisse = [e for e in ergebnisse if punkte_von(e) >= STABIL_AB]
         elif filter_wahl == "instabil":
             ergebnisse = [e for e in ergebnisse if punkte_von(e) < 50]
+        elif filter_wahl in ("w_milde", "w_streng"):
+            art = filter_wahl[2:]
+            ergebnisse = [
+                e for e in ergebnisse
+                if klassifiziere(punkte_von(e), e[3].get("rdkit_gueltig")) == art
+            ]
 
         erlaubt = NEUHEIT_FILTER.get(neuheit_filter)
 
@@ -217,6 +226,8 @@ class ErgebnisModell:
 
         punkte = [punkte_von(e) for e in eintraege]
 
+        arten = [klassifiziere(punkte_von(e), e[3].get("rdkit_gueltig")) for e in eintraege]
+
         return {
             "gesamt": self.zaehler,
             "ausgewertet": len(eintraege),
@@ -226,6 +237,8 @@ class ErgebnisModell:
             "stabil": sum(1 for p in punkte if p >= STABIL_AB),
             "beobachtung": sum(1 for e in eintraege if e[1] == "Beobachtung"),
             "automatik": sum(1 for e in eintraege if e[1] == "Automatik"),
+            "widerspruch_milde": arten.count("milde"),
+            "widerspruch_streng": arten.count("streng"),
         }
 
 
@@ -252,8 +265,8 @@ def config_text(config):
         t("cfg.endlos") if config.endlos
         else t("cfg.automatik", n=zahl(config.automatik_experimente)),
         t("cfg.max_atome", n=config.max_atome),
-        t("cfg.konstruktion") if config.automatik_modus == "konstruktion"
-        else t("cfg.zufall"),
+        {"konstruktion": t("cfg.konstruktion"), "evolution": t("cfg.evolution")}.get(
+            config.automatik_modus, t("cfg.zufall")),
         t("cfg.filter_aus") if config.ziel_verhaeltnis_neg_zu_pos is None
         else t("cfg.filter", n=config.ziel_verhaeltnis_neg_zu_pos),
     ]

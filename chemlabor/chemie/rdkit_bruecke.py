@@ -1,4 +1,3 @@
-
 # ==========================================================
 # rdkit_bruecke.py
 # ==========================================================
@@ -33,13 +32,22 @@
 # Ein zu enges except hier wuerde bei einem RDKit-Update leise wieder
 # unbehandelte Abstuerze produzieren - deshalb bewusst breites
 # "except Exception", nur an dieser einen, klar abgegrenzten Stelle.
+#
+# Oeffentliche Funktionen (von labor.py, modell.py, neuheit.py u.a.
+# benutzt): pruefe, ist_gueltig, kanonische_signatur, summenformel,
+# molmasse. Intern: _molekuel_cache_key, _pruefe_cached, _pruefe_raw,
+# _zu_roh_rdkit (der Konstruktor ruft _zu_roh_rdkit direkt auf).
 # ==========================================================
 
 import json
 from functools import lru_cache
 
-from rdkit import Chem
+from rdkit import Chem, RDLogger
 from rdkit.Chem import rdMolDescriptors
+
+# Ungueltige Molekuele sind hier der Normalfall; RDKit schreibt sonst zu
+# jedem eine Zeile auf stderr (spuerbar langsam, v.a. in der Windows-Konsole).
+RDLogger.DisableLog("rdApp.*")
 
 
 BINDUNGSTYP = {
@@ -86,16 +94,13 @@ def _molekuel_cache_key(molekuel):
     )
 
 
-@lru_cache(maxsize=20000)
-def _pruefe_cached(serialisiert):
-    """Zentrale RDKit-Pruefung mit LRU-Caching. Der Cache laeuft auf
-    einem normalisierten Molekuel-Key und vermeidet wiederholte
-    Sanitize-Aufrufe fuer dieselbe Struktur.
-    """
+def _aus_key(serialisiert):
+    """Baut aus dem Cache-Key wieder ein Molekuel im internen Format. JSON
+    macht aus den Tupeln Listen - daher werden die dicts hier neu gebaut."""
 
     daten = json.loads(serialisiert)
 
-    molekuel = {
+    return {
         "atoms": [
             {"id": i, "element": e, "valence": v, "used_valence": u}
             for i, e, v, u in daten["atoms"]
@@ -106,7 +111,51 @@ def _pruefe_cached(serialisiert):
         ],
     }
 
-    return _pruefe_raw(molekuel)
+
+# WICHTIG (Speicher): in den Caches stehen nur kleine Werte (bool, Text,
+# Zahl), NIE RDKit-Mol-Objekte. Frueher hielt der Cache bis zu 20000 Mols
+# fest - bei langen Automatik-/Endlos-Laeufen waren das viele hundert MB.
+CACHE_GROESSE = 20000
+
+
+@lru_cache(maxsize=CACHE_GROESSE)
+def _pruefe_cached(serialisiert):
+    """(gueltig, fehlertext) - ohne Mol-Objekt, siehe oben."""
+
+    gueltig, fehler, _m = _pruefe_raw(_aus_key(serialisiert))
+
+    return gueltig, fehler
+
+
+@lru_cache(maxsize=CACHE_GROESSE)
+def _smiles_cached(serialisiert):
+
+    gueltig, _fehler, m = _pruefe_raw(_aus_key(serialisiert))
+
+    return Chem.MolToSmiles(m) if gueltig else None
+
+
+@lru_cache(maxsize=CACHE_GROESSE)
+def _formel_cached(serialisiert):
+
+    gueltig, _fehler, m = _pruefe_raw(_aus_key(serialisiert))
+
+    return rdMolDescriptors.CalcMolFormula(m) if gueltig else None
+
+
+@lru_cache(maxsize=CACHE_GROESSE)
+def _masse_cached(serialisiert):
+
+    gueltig, _fehler, m = _pruefe_raw(_aus_key(serialisiert))
+
+    return rdMolDescriptors.CalcExactMolWt(m) if gueltig else None
+
+
+def cache_leeren():
+    """Leert alle Caches (z.B. zwischen zwei Laeufen)."""
+
+    for funktion in (_pruefe_cached, _smiles_cached, _formel_cached, _masse_cached):
+        funktion.cache_clear()
 
 
 def _pruefe_raw(molekuel):
@@ -178,57 +227,46 @@ def pruefe(molekuel):
     'gueltig' heisst: RDKit haette gegen dieses Molekuel nach seinen
     eigenen (deutlich strengeren, auf echter Chemie basierenden)
     Regeln nichts einzuwenden - unabhaengig davon, was Kritiker.py
-    dazu sagt."""
+    dazu sagt.
+
+    Das Ja/Nein kommt aus dem Cache; das Mol-Objekt wird nur bei einem
+    gueltigen Molekuel neu gebaut (und nicht im Cache gehalten)."""
 
     key = _molekuel_cache_key(molekuel)
-    return _pruefe_cached(key)
+
+    gueltig, fehler = _pruefe_cached(key)
+
+    if not gueltig:
+        return False, fehler, None
+
+    return _pruefe_raw(_aus_key(key))
 
 
 def ist_gueltig(molekuel):
-    """Kurzform von pruefe(), wenn nur das Ja/Nein interessiert."""
+    """Nur Ja/Nein - der schnelle Weg ohne Mol-Objekt."""
 
-    gueltig, _fehler, _m = pruefe(molekuel)
-
-    return gueltig
+    return _pruefe_cached(_molekuel_cache_key(molekuel))[0]
 
 
 def kanonische_signatur(molekuel):
-    """Echte kanonische SMILES als Signatur - im Unterschied zu
-    ki_gedaechtnis.molekuel_signatur() strukturell/graphentheoretisch
-    korrekt (erkennt z.B. symmetrische Ringe zuverlaessig als
-    gleich/verschieden). Rueckgabe None, wenn das Molekuel RDKits
-    Sanitize-Pruefung nicht besteht - dann ist eine kanonische Form im
-    chemischen Sinne ohnehin nicht sinnvoll definiert."""
+    """Echte kanonische SMILES als Signatur - strukturell/graphentheoretisch
+    korrekt (erkennt z.B. symmetrische Ringe zuverlaessig als gleich/
+    verschieden). None, wenn das Molekuel RDKits Sanitize-Pruefung nicht
+    besteht."""
 
-    gueltig, _fehler, m = pruefe(molekuel)
-
-    if not gueltig:
-        return None
-
-    return Chem.MolToSmiles(m)
+    return _smiles_cached(_molekuel_cache_key(molekuel))
 
 
 def summenformel(molekuel):
-    """RDKit-Summenformel (Hill-Notation) - Ersatz/Ergaenzung zu
-    labor.formel(), die nur simpel durchzaehlt. None, wenn ungueltig."""
+    """RDKit-Summenformel (Hill-Notation); None, wenn ungueltig."""
 
-    gueltig, _fehler, m = pruefe(molekuel)
-
-    if not gueltig:
-        return None
-
-    return rdMolDescriptors.CalcMolFormula(m)
+    return _formel_cached(_molekuel_cache_key(molekuel))
 
 
 def molmasse(molekuel):
     """Exakte Molmasse in g/mol, oder None, wenn ungueltig."""
 
-    gueltig, _fehler, m = pruefe(molekuel)
-
-    if not gueltig:
-        return None
-
-    return rdMolDescriptors.CalcExactMolWt(m)
+    return _masse_cached(_molekuel_cache_key(molekuel))
 
 
 # ==========================================================

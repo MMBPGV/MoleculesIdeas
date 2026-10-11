@@ -16,14 +16,22 @@
 # Alle sichtbaren Texte kommen aus chemlabor/texte.py.
 
 import queue
+import sys
 import threading
 import time
 import tkinter as tk
+import traceback
 from dataclasses import replace
 from tkinter import filedialog, scrolledtext, ttk
 
 from chemlabor.config import LaborConfig
 from chemlabor.gui.dialog_einstellungen import zeige_einstellungen
+from chemlabor.gui.layout import (
+    adaptiver_abstand,
+    fenstergroesse,
+    geometrie,
+    mindestgroesse,
+)
 from chemlabor.gui.modell import ErgebnisModell, config_text
 from chemlabor.gui.tab_ergebnisse import TabErgebnisse
 from chemlabor.gui.tab_live import TabLive
@@ -35,8 +43,21 @@ from chemlabor.texte import t
 
 LOG_MAX_ZEILEN = 2000
 
+# Zeitbudget je Abfrage der Queues (Sekunden)
+POLL_BUDGET = 0.03
+
 # Die Ergebnis-Tabelle wird hoechstens so oft neu aufgebaut (Sekunden)
 TABELLE_MIN_ABSTAND = 0.4
+
+# Der Live-Tab (Kennzahlen + Lernkurve) hoechstens so oft (Sekunden). Beide
+# Abstaende wachsen automatisch mit der gemessenen Zeichendauer (siehe
+# layout.adaptiver_abstand) - auf langsamen Rechnern also von selbst.
+LIVE_MIN_ABSTAND = 0.3
+
+# Wie oft Python zwischen Threads wechselt (Sekunden, Standard 0.005).
+# Kleiner = die Oberflaeche bekommt waehrend des Laborlaufs oefter den
+# Interpreter und ruckelt weniger (v.a. unter Windows spuerbar).
+GIL_WECHSELINTERVALL = 0.002
 
 FERTIG = "__FERTIG__"
 
@@ -53,8 +74,16 @@ class Hauptfenster:
         self.root = root
 
         root.title(t("fenster.titel"))
-        root.geometry("1200x780")
-        root.minsize(920, 600)
+        sys.setswitchinterval(GIL_WECHSELINTERVALL)
+
+        # Fenster nie groesser als der nutzbare Bildschirm - sonst liegt auf
+        # Windows mit Skalierung/kleinem Laptop-Display der untere Teil (Log,
+        # Buttons) ausserhalb und wirkt wie "nicht geladen".
+        bildschirm_b = root.winfo_screenwidth()
+        bildschirm_h = root.winfo_screenheight()
+        breite, hoehe = fenstergroesse(bildschirm_b, bildschirm_h)
+        root.geometry(geometrie(bildschirm_b, bildschirm_h, breite, hoehe))
+        root.minsize(*mindestgroesse(breite, hoehe))
 
         konfiguriere_style(root)
         ergaenze_style(root)
@@ -74,10 +103,17 @@ class Hauptfenster:
         self._stand_live = -1
         self._stand_tabelle = -1
         self._tabelle_zeit = 0.0
+        self._tabelle_abstand = TABELLE_MIN_ABSTAND
+        self._live_zeit = 0.0
+        self._live_abstand = LIVE_MIN_ABSTAND
+        self._letzter_anzeige_fehler = None
 
         self._baue_kopfzeile()
-        self._baue_tabs()
+        # Log zuerst packen (unten): pack vergibt den Platz in der Reihenfolge,
+        # und die expandierenden Tabs sollen nur den REST bekommen - sonst
+        # wird der Log auf kleinen Fenstern abgeschnitten.
         self._baue_log()
+        self._baue_tabs()
 
         self._aktualisiere_beschriftungen()
 
@@ -143,12 +179,12 @@ class Hauptfenster:
         self.tab_ergebnisse = TabErgebnisse(self.notebook, self.modell, log=self.log)
         self.notebook.add(self.tab_ergebnisse, text=t("fenster.tab_ergebnisse"))
 
-        self.notebook.bind("<<NotebookTabChanged>>", lambda _e: self._render(erzwingen=True))
+        self.notebook.bind("<<NotebookTabChanged>>", lambda _e: self._render_sicher(erzwingen=True))
 
     def _baue_log(self):
 
         self.log_rahmen = ttk.Frame(self.root, padding=(8, 0, 8, 6))
-        self.log_rahmen.pack(fill="x")
+        self.log_rahmen.pack(side="bottom", fill="x")
 
         leiste = ttk.Frame(self.log_rahmen)
         leiste.pack(fill="x")
@@ -312,10 +348,20 @@ class Hauptfenster:
         self.fortschritt_queue.put(text)
 
     def _poll_queues(self):
+        """Holt Meldungen und Ergebnisse aus den Queues - hoechstens
+        POLL_BUDGET Sekunden je Durchlauf. Ohne diese Grenze lief die
+        Schleife im Endlos-Modus (Labor schneller als die GUI) nie leer
+        und das Fenster haengte sich auf."""
 
         fertig = False
+        ende = time.monotonic() + POLL_BUDGET
+        rueckstand = False
 
         while True:
+
+            if time.monotonic() > ende:
+                rueckstand = True
+                break
 
             try:
                 text = self.fortschritt_queue.get_nowait()
@@ -327,7 +373,11 @@ class Hauptfenster:
             else:
                 self.log(text)
 
-        while True:
+        while not rueckstand:
+
+            if time.monotonic() > ende:
+                rueckstand = True
+                break
 
             try:
                 eintrag = self.ergebnis_queue.get_nowait()
@@ -346,13 +396,34 @@ class Hauptfenster:
 
             self._setze_status(t("fenster.fertig"))
 
-            self._render(erzwingen=True)
+            self._render_sicher(erzwingen=True)
 
         else:
 
-            self._render()
+            self._render_sicher()
 
-        self.root.after(150, self._poll_queues)
+        # Bei Rueckstand schnell wiederkommen, aber der GUI zwischendurch
+        # Luft fuer Eingaben und Neuzeichnen lassen.
+        self.root.after(30 if rueckstand else 150, self._poll_queues)
+
+    def _render_sicher(self, erzwingen=False):
+        """Ruft _render() auf, laesst einen Fehler dort aber nicht die
+        Abfrageschleife (_poll_queues) beenden: ohne diesen Schutz haette
+        ein einziger Anzeigefehler zur Folge, dass die GUI fuer den Rest
+        der Sitzung nichts mehr aktualisiert. Der Fehler erscheint im Log
+        (einmal je Meldung) und mit vollem Traceback in der Konsole."""
+
+        try:
+            self._render(erzwingen=erzwingen)
+        except Exception as fehler:
+            traceback.print_exc()
+            meldung = t(
+                "fenster.anzeige_fehler",
+                fehler=f"{type(fehler).__name__}: {fehler}"
+            )
+            if meldung != self._letzter_anzeige_fehler:
+                self._letzter_anzeige_fehler = meldung
+                self.log(meldung)
 
     def _render(self, erzwingen=False):
         """Zeichnet nur den gerade sichtbaren Tab - und nur, wenn es neue
@@ -367,9 +438,19 @@ class Hauptfenster:
 
         if aktueller == str(self.tab_live):
 
-            if erzwingen or anzahl != self._stand_live:
+            jetzt = time.monotonic()
+
+            if erzwingen or (
+                anzahl != self._stand_live
+                and jetzt - self._live_zeit >= self._live_abstand
+            ):
+                start = time.monotonic()
                 self.tab_live.aktualisiere(self.labor)
+                self._live_abstand = adaptiver_abstand(
+                    time.monotonic() - start, LIVE_MIN_ABSTAND
+                )
                 self._stand_live = anzahl
+                self._live_zeit = jetzt
 
         elif aktueller == str(self.tab_ergebnisse):
 
@@ -377,9 +458,13 @@ class Hauptfenster:
 
             if erzwingen or (
                 anzahl != self._stand_tabelle
-                and jetzt - self._tabelle_zeit >= TABELLE_MIN_ABSTAND
+                and jetzt - self._tabelle_zeit >= self._tabelle_abstand
             ):
+                start = time.monotonic()
                 self.tab_ergebnisse.aktualisiere()
+                self._tabelle_abstand = adaptiver_abstand(
+                    time.monotonic() - start, TABELLE_MIN_ABSTAND
+                )
                 self._stand_tabelle = anzahl
                 self._tabelle_zeit = jetzt
 

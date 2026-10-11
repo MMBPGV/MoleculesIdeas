@@ -15,7 +15,7 @@ from chemlabor.texte import t, zahl
 
 # Nur die Schluessel - die Titel werden erst beim Bauen des Tabs
 # uebersetzt (nicht beim Import, sonst waere die Sprache zu frueh fest).
-KENNZAHLEN = ("experimente", "mittel", "stabil", "spanne", "phasen")
+KENNZAHLEN = ("experimente", "mittel", "stabil", "spanne", "phasen", "widersprueche")
 
 
 class TabLive(ttk.Frame):
@@ -92,6 +92,9 @@ class TabLive(ttk.Frame):
         )
         self.werte["spanne"].config(text=f"{k['minimum']} – {k['maximum']}")
         self.werte["phasen"].config(text=f"{k['beobachtung']} / {k['automatik']}")
+        self.werte["widersprueche"].config(
+            text=f"{k['widerspruch_milde']} / {k['widerspruch_streng']}"
+        )
 
         filter_zeile = t("live.filter", text=filter_text(labor))
 

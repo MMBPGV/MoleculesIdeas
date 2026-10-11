@@ -1,5 +1,6 @@
 import json
 import threading
+import time
 
 from collections import deque, Counter
 
@@ -13,6 +14,7 @@ from chemlabor.chemie.zufallsgenerator import (
 )
 
 from chemlabor.chemie.kritiker import Kritiker
+from chemlabor.chemie.widerspruch import lernpunkte
 
 from chemlabor.ki.gedaechtnis import (
     KIGedaechtnis,
@@ -20,6 +22,7 @@ from chemlabor.ki.gedaechtnis import (
 )
 
 from chemlabor.ki.konstruktor import KIKonstruktor
+from chemlabor.ki.evolution import Evolution  # noqa: F401
 from chemlabor.pfade import PERIODENSYSTEM
 from chemlabor.config import LaborConfig
 from chemlabor.texte import t
@@ -216,7 +219,11 @@ class ChemLabor:
 
 
 
-        self.kritiker = Kritiker()
+        if self.config.kraftfeld:
+            from chemlabor.chemie.kritiker_kraftfeld import KritikerKraftfeld
+            self.kritiker = KritikerKraftfeld()
+        else:
+            self.kritiker = Kritiker()
 
 
 
@@ -233,6 +240,7 @@ class ChemLabor:
         # zu vergleichen. self.automatik_modus waehlt zwischen beiden
         # (siehe automatikphase()).
         self.konstruktor = None
+        self.evolution = None
         self.automatik_modus = self.config.automatik_modus
 
 
@@ -416,6 +424,70 @@ class ChemLabor:
     # Experiment
     # ------------------------------------------------------
 
+
+    # ------------------------------------------------------
+    # Molekuel-Erzeugung Evolution
+    # ------------------------------------------------------
+
+    def _baue_evolution(self):
+        """Erzeugt die Evolution nach der Beobachtungsphase. Startpopulation
+        = die besten Beobachtungs-Molekuele; Einwanderer kommen aus dem
+        reinen Zufallsgenerator und dem KIGenerator."""
+
+        from chemlabor.chemie.zufallsgenerator import VALENZEN, BINDUNGSARTEN
+        from chemlabor.ki.evolution import Evolution
+        from chemlabor.texte import t
+
+        def signatur(molekuel):
+            sig = rb.kanonische_signatur(molekuel)
+            if sig is not None:
+                return sig
+            el = {a["id"]: a["element"] for a in molekuel["atoms"]}
+            return tuple(sorted(
+                (el[b["atom1"]], el[b["atom2"]], b["order"])
+                for b in molekuel["bonds"]
+            ))
+
+        def bei_generation(info):
+            ereignis = f" [{info['ereignis']}]" if info.get("ereignis") else ""
+            self.on_fortschritt(t(
+                "lab.generation", g=info["generation"],
+                b=f"{info['bestes']:.0f}", m=f"{info['mittel']:.0f}",
+                v=f"{info['vielfalt']:.2f}", ereignis=ereignis
+            ))
+
+        c = self.config
+
+        self.evolution = Evolution(
+            list(VALENZEN), VALENZEN, BINDUNGSARTEN,
+            quellen=[
+                ("zufall", self.neues_molekuel_zufall, 1.0),
+                ("ki", self.neues_molekuel_ki, 1.0),
+            ],
+            signatur=signatur,
+            max_atome=c.max_atome,
+            population=c.evo_population,
+            eliten=c.evo_eliten,
+            zufall_grundrate=c.evo_zufall_grundrate,
+            sackgasse_generationen=c.evo_sackgasse,
+            sackgasse_anteil=c.evo_sackgasse_anteil,
+            on_generation=bei_generation,
+        )
+
+        start = [
+            (mol, ana["bewertung"]["punkte"])
+            for _nr, phase, mol, ana in self.alle_ergebnisse
+            if phase == "Beobachtung"
+        ]
+
+        self.evolution.besiedle(start)
+
+        self.on_fortschritt(t("lab.evolution_start", n=len(self.evolution.population)))
+
+    def neues_molekuel_evolution(self):
+        """Gleicher Null-Argument-Vertrag wie die anderen Erzeuger."""
+
+        return self.evolution.naechstes()
 
     def experiment(
             self,
@@ -674,6 +746,32 @@ class ChemLabor:
     # und die Ergebnisliste bleibt uebersichtlicher.
     # ------------------------------------------------------
 
+    def _lernanalyse(self, analyse):
+        """Analyse fuer das LERNEN (gedaechtnis.beobachte). Bei einem
+        Widerspruch 'Kritiker >= 75, RDKit lehnt ab' sind die Punkte um
+        config.rdkit_lernabzug (Standard 3, hoechstens 10) gesenkt - sonst
+        ist es die unveraenderte Analyse. Die an GUI/Ergebnisse gemeldete
+        Analyse und die Kritiker-Punktzahl bleiben immer unberuehrt; RDKit
+        belohnt nie, damit nicht nur bekannte Chemie gelernt wird (siehe
+        chemie/widerspruch.py)."""
+
+        punkte = analyse["bewertung"]["punkte"]
+
+        neu = lernpunkte(
+            punkte,
+            analyse.get("rdkit_gueltig"),
+            self.config.rdkit_lernabzug
+        )
+
+        if neu == punkte:
+            return analyse
+
+        angepasst = dict(analyse)
+        angepasst["bewertung"] = dict(analyse["bewertung"], punkte=neu)
+
+        return angepasst
+
+
     def _verhaeltnis_pruefen(self, analyse):
         """Rueckgabe: (positiv, vollstaendig). 'positiv' sagt nur etwas
         ueber die Punktzahl relativ zur aktuellen Schwelle aus,
@@ -818,13 +916,9 @@ class ChemLabor:
             # KI bekommt Erfahrung
 
             self.gedaechtnis.beobachte(
-
                 molekuel,
-
-                analyse,
-
+                self._lernanalyse(analyse),
                 vollstaendig=vollstaendig
-
             )
 
 
@@ -933,6 +1027,9 @@ class ChemLabor:
             max_atome=self.config.max_atome
         )
 
+        if self.automatik_modus == "evolution":
+            self._baue_evolution()
+
 
 
 
@@ -1002,11 +1099,10 @@ class ChemLabor:
         max_versuche_phase = self.config.automatik_experimente * self.config.versuche_faktor  # nur im gezaehlten Modus relevant
 
 
-        erzeuger = (
-            self.neues_molekuel_konstruktion
-            if self.automatik_modus == "konstruktion"
-            else self.neues_molekuel_ki
-        )
+        erzeuger = {
+            "konstruktion": self.neues_molekuel_konstruktion,
+            "evolution": self.neues_molekuel_evolution,
+        }.get(self.automatik_modus, self.neues_molekuel_ki)
 
 
         while True:
@@ -1017,6 +1113,11 @@ class ChemLabor:
             # Wirkung.
             if self.stop_event.is_set():
                 break
+
+            # Endlos-Modus: dem GUI-Thread regelmaessig Rechenzeit lassen,
+            # sonst haengt sich das Fenster bei sehr schnellen Erzeugern auf.
+            if endlos and automatisch % 10 == 0:
+                time.sleep(0.003)
 
             if not endlos:
 
@@ -1047,13 +1148,16 @@ class ChemLabor:
 
             automatisch += 1
 
+            if self.automatik_modus == "evolution" and self.evolution is not None:
+                self.evolution.melde(molekuel, analyse["bewertung"]["punkte"])
+
 
             positiv, vollstaendig = self._verhaeltnis_pruefen(analyse)
 
             # Auch die KI lernt weiter
             self.gedaechtnis.beobachte(
                 molekuel,
-                analyse,
+                self._lernanalyse(analyse),
                 vollstaendig=vollstaendig
             )
 

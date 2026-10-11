@@ -45,10 +45,12 @@ class EinstellungenDialog(tk.Toplevel):
         self.automatik = tk.StringVar()
         self.kandidaten = tk.StringVar()
         self.max_atome = tk.StringVar()
+        self.rdkit_abzug = tk.StringVar()
         self.filter_aktiv = tk.BooleanVar()
         self.verhaeltnis = tk.StringVar()
         self.modus = tk.StringVar()
         self.endlos = tk.BooleanVar()
+        self.kraftfeld = tk.BooleanVar()
         self.autosave = tk.BooleanVar()
 
         self._baue()
@@ -95,6 +97,7 @@ class EinstellungenDialog(tk.Toplevel):
         feld(t("dlg.automatik"), self.automatik, t("dlg.automatik_hinweis"))
         feld(t("dlg.kandidaten"), self.kandidaten, t("dlg.kandidaten_hinweis"))
         feld(t("dlg.max_atome"), self.max_atome, t("dlg.max_atome_hinweis"))
+        feld(t("dlg.rdkit_abzug"), self.rdkit_abzug, t("dlg.rdkit_abzug_hinweis"))
 
         ttk.Label(rahmen, text=t("dlg.verhaeltnis")).grid(row=zeile, column=0, sticky="w", pady=3)
 
@@ -114,6 +117,7 @@ class EinstellungenDialog(tk.Toplevel):
 
         ttk.Radiobutton(modus, text=t("dlg.modus_zufall"), value="zufall", variable=self.modus).pack(anchor="w")
         ttk.Radiobutton(modus, text=t("dlg.modus_konstruktion"), value="konstruktion", variable=self.modus).pack(anchor="w")
+        ttk.Radiobutton(modus, text=t("dlg.modus_evolution"), value="evolution", variable=self.modus).pack(anchor="w")
 
         zeile += 1
 
@@ -122,6 +126,14 @@ class EinstellungenDialog(tk.Toplevel):
             text=t("dlg.endlos"),
             variable=self.endlos
         ).grid(row=zeile, column=0, columnspan=3, sticky="w", pady=(8, 0))
+
+        zeile += 1
+
+        ttk.Checkbutton(
+            rahmen,
+            text=t("dlg.kraftfeld"),
+            variable=self.kraftfeld
+        ).grid(row=zeile, column=0, columnspan=3, sticky="w", pady=(4, 0))
 
         zeile += 1
 
@@ -161,6 +173,7 @@ class EinstellungenDialog(tk.Toplevel):
         self.automatik.set(str(config.automatik_experimente))
         self.kandidaten.set(str(config.kandidaten_pro_molekuel))
         self.max_atome.set(str(config.max_atome))
+        self.rdkit_abzug.set(str(config.rdkit_lernabzug))
 
         self.filter_aktiv.set(config.ziel_verhaeltnis_neg_zu_pos is not None)
         self.verhaeltnis.set(
@@ -170,6 +183,7 @@ class EinstellungenDialog(tk.Toplevel):
 
         self.modus.set(config.automatik_modus)
         self.endlos.set(config.endlos)
+        self.kraftfeld.set(config.kraftfeld)
         self.autosave.set(bool(config.autosave_pfad))
 
         self.fehler.config(text="")
@@ -181,12 +195,14 @@ class EinstellungenDialog(tk.Toplevel):
             "automatik_experimente": _ganzzahl(self.automatik.get(), t("dlg.automatik")),
             "kandidaten_pro_molekuel": _ganzzahl(self.kandidaten.get(), t("dlg.kandidaten")),
             "max_atome": _ganzzahl(self.max_atome.get(), t("dlg.max_atome")),
+            "rdkit_lernabzug": _ganzzahl(self.rdkit_abzug.get(), t("dlg.rdkit_abzug")),
             "ziel_verhaeltnis_neg_zu_pos": (
                 _ganzzahl(self.verhaeltnis.get(), t("dlg.verhaeltnis"))
                 if self.filter_aktiv.get() else None
             ),
             "automatik_modus": self.modus.get(),
             "endlos": bool(self.endlos.get()),
+            "kraftfeld": bool(self.kraftfeld.get()),
             "autosave_pfad": AUTOSAVE_PFAD if self.autosave.get() else None,
         }
 

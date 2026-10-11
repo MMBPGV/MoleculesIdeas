@@ -21,7 +21,10 @@ from typing import Optional
 from chemlabor.texte import t
 
 
-AUTOMATIK_MODI = ("zufall", "konstruktion")
+AUTOMATIK_MODI = ("zufall", "konstruktion", "evolution")
+
+# Obergrenze fuer rdkit_lernabzug (siehe chemie/widerspruch.py)
+MAX_RDKIT_LERNABZUG = 10
 
 
 def _ganzzahl(feld, wert, minimum):
@@ -68,7 +71,9 @@ class LaborConfig:
     fehler_log_limit: int = 3
     automatik_endlos_log_intervall: int = 200
 
-    # "zufall" = KIGenerator (Best-of-N), "konstruktion" = KIKonstruktor
+    # "zufall" = KIGenerator (Best-of-N), "konstruktion" = KIKonstruktor,
+    # "evolution" = Population mit Mutation/Rekombination; Zufallsgenerator
+    # und KIGenerator liefern Einwanderer (siehe ki/evolution.py)
     automatik_modus: str = "zufall"
 
     # True: Automatikphase laeuft, bis ChemLabor.stoppen() aufgerufen wird
@@ -77,6 +82,24 @@ class LaborConfig:
     # Autosave des Gedaechtnisses: Pfad (None = aus) und Intervall
     autosave_pfad: Optional[str] = None
     autosave_intervall: int = 5000
+
+    # Lernabzug in Punkten fuer Molekuele, die der Kritiker gut findet
+    # (>= 75), RDKit aber ablehnt - NUR im Lernsignal des Gedaechtnisses,
+    # nie in der angezeigten Punktzahl. Bewusst klein, damit nicht nur
+    # bekannte Chemie gelernt wird; 0 = aus (siehe chemie/widerspruch.py).
+    rdkit_lernabzug: int = 3
+
+    # Kritiker mit Kraftfeld-Abzug fuer verzerrte/nicht baubare Geometrien
+    # (siehe chemie/kraftfeld.py). Kostet ein paar Millisekunden je
+    # Molekuel; aus = normaler Kritiker.
+    kraftfeld: bool = False
+
+    # Evolutionsmodus
+    evo_population: int = 30
+    evo_eliten: int = 4
+    evo_sackgasse: int = 12          # Generationen ohne Verbesserung
+    evo_zufall_grundrate: float = 0.05
+    evo_sackgasse_anteil: float = 0.3
 
     @property
     def beobachtung_log_intervall(self):
@@ -98,6 +121,25 @@ class LaborConfig:
         _ganzzahl("fehler_log_limit", self.fehler_log_limit, 0)
         _ganzzahl("endlos_log", self.automatik_endlos_log_intervall, 1)
         _ganzzahl("autosave_intervall", self.autosave_intervall, 1)
+        _ganzzahl("rdkit_lernabzug", self.rdkit_lernabzug, 0)
+        _ganzzahl("evo_population", self.evo_population, 4)
+        _ganzzahl("evo_eliten", self.evo_eliten, 1)
+        _ganzzahl("evo_sackgasse", self.evo_sackgasse, 1)
+
+        for name, wert in (("evo_zufall_grundrate", self.evo_zufall_grundrate),
+                           ("evo_sackgasse_anteil", self.evo_sackgasse_anteil)):
+            if not 0 <= wert <= 1:
+                raise ValueError(f"{name} must be between 0 and 1 (got: {wert}).")
+
+        if self.rdkit_lernabzug > MAX_RDKIT_LERNABZUG:
+            raise ValueError(
+                t(
+                    "config.maximum",
+                    name=t("feld.rdkit_lernabzug"),
+                    maximum=MAX_RDKIT_LERNABZUG,
+                    wert=self.rdkit_lernabzug
+                )
+            )
 
         if self.ziel_verhaeltnis_neg_zu_pos is not None:
             _ganzzahl("verhaeltnis", self.ziel_verhaeltnis_neg_zu_pos, 0)

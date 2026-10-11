@@ -97,7 +97,7 @@ class TabErgebnisse(ttk.Frame):
         self.filter_box = ttk.Combobox(
             oben,
             values=[t(f"filter.{k}", ab=STABIL_AB) for k in FILTER],
-            state="readonly", width=20
+            state="readonly", width=40
         )
         self.filter_box.current(0)
         self.filter_box.pack(side="left", padx=(4, 12))

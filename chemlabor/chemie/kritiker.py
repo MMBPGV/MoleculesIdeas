@@ -65,7 +65,9 @@ class Kritiker(PlausibilitaetsModelle):
             self.modell_hypervalenz,
             self.modell_kumulene_im_ring,
             self.modell_hypohalogenite,
-            self.modell_schwere_mehrfachbindungen
+            self.modell_schwere_mehrfachbindungen,
+            self.modell_schwache_ketten,
+            self.modell_kumulen_kette
 
         ]
 
@@ -422,7 +424,7 @@ class Kritiker(PlausibilitaetsModelle):
 
             else:
 
-                abzug = frei * 10
+                abzug = frei * 20
                 e["punkte"] -= abzug
                 e["probleme"].append({
                     "modell": "Offene Valenzen",
@@ -1215,6 +1217,236 @@ class Kritiker(PlausibilitaetsModelle):
 
     _NORMALE_VALENZ = {"H": 1, "C": 4, "N": 3, "O": 2, "F": 1, "Cl": 1, "Br": 1, "I": 1, "P": 3, "S": 2, "Si": 4, "B": 3}
 
+    # ==========================================================
+    # MODELL — KETTEN SCHWACHER BINDUNGEN / POLYSTICKSTOFF / KUMULENE
+    # ==========================================================
+    #
+    # Gemessen am Referenzset (eichung.py): Triazan, Trioxidan, FOOF und
+    # Pentatetraen bekamen 70-100 Punkte, weil jede schwache Bindung nur
+    # einzeln (5-10 Punkte) zaehlte. Aneinandergereihte labile Bindungen
+    # (N-N-N, O-O-O) zerfallen aber kooperativ - die Abzuege wachsen
+    # deshalb mit der Kettenlaenge. Die Werte sind grob geschaetzt.
+
+    _LABILE_ELEMENTE = ("N", "O", "F", "Cl", "Br", "I")
+    _KETTE_ABZUG_JE_BINDUNG = 35
+    _KETTE_ABZUG_MAX = 70
+    _POLYSTICKSTOFF_ABZUG_JE_N = 25
+    _POLYSTICKSTOFF_ABZUG_MAX = 50
+    _KUMULEN_KETTE_ABZUG_JE_ZENTRUM = 30
+    _KUMULEN_KETTE_ABZUG_MAX = 60
+
+    def _aromatische_paare(self, daten):
+        """Atompaare (frozenset) der Bindungen in aromatischen Ringen."""
+
+        paare = set()
+        m = daten["molekuel"]
+
+        if m["anzahl_bindungen"] - m["anzahl_atome"] + m["fragmente"] <= 0:
+            return paare
+
+        for ring in self._alle_ringe(daten):
+
+            if self._ist_aromatisch(ring, daten):
+
+                n = len(ring)
+
+                for i in range(n):
+                    paare.add(frozenset([ring[i], ring[(i + 1) % n]]))
+
+        return paare
+
+    @staticmethod
+    def _komponenten(kanten):
+        """Zusammenhangskomponenten eines Graphen aus Kanten (a, b):
+        Liste von (Atommenge, Kantenzahl)."""
+
+        nachbarn = defaultdict(set)
+
+        for a, b in kanten:
+            nachbarn[a].add(b)
+            nachbarn[b].add(a)
+
+        besucht = set()
+        ergebnis = []
+
+        for start in nachbarn:
+
+            if start in besucht:
+                continue
+
+            stapel = [start]
+            atome = set()
+
+            while stapel:
+
+                atom = stapel.pop()
+
+                if atom in atome:
+                    continue
+
+                atome.add(atom)
+                stapel.extend(nachbarn[atom] - atome)
+
+            besucht |= atome
+
+            anzahl = sum(1 for a, b in kanten if a in atome)
+            ergebnis.append((atome, anzahl))
+
+        return ergebnis
+
+    def modell_schwache_ketten(self, daten):
+
+        e = {"punkte": 0, "regeln": [], "probleme": [], "erklaerung": []}
+
+        aromatisch = self._aromatische_paare(daten)
+
+        schwach = []
+        stickstoff = []
+
+        for b in daten["bindungen"]:
+
+            e1, e2 = b["elemente"]
+            paar = frozenset([b["atom1"], b["atom2"]])
+
+            if paar in aromatisch:
+                continue
+
+            if e1 == "N" and e2 == "N":
+                stickstoff.append((b["atom1"], b["atom2"]))
+
+            if e1 not in self._LABILE_ELEMENTE or e2 not in self._LABILE_ELEMENTE:
+                continue
+
+            energie = self._BINDUNGSENERGIEN.get((frozenset([e1, e2]), b["ordnung"]))
+
+            if energie is not None and energie < self._SCHWACHE_BINDUNG_SCHWELLE:
+                schwach.append((b["atom1"], b["atom2"]))
+
+        abzug = 0
+
+        for atome, anzahl in self._komponenten(schwach):
+
+            if anzahl >= 2:
+                abzug += self._KETTE_ABZUG_JE_BINDUNG * (anzahl - 1)
+
+        abzug = min(abzug, self._KETTE_ABZUG_MAX)
+
+        if abzug:
+
+            e["punkte"] -= abzug
+            e["probleme"].append({
+                "modell": "Kette schwacher Bindungen",
+                "abzug": abzug
+            })
+            e["erklaerung"].append(
+                "Mehrere schwache Bindungen (N-N, O-O, O-F ...) hintereinander - "
+                "solche Ketten zerfallen leicht."
+            )
+
+        stickstoff_abzug = 0
+
+        for atome, _anzahl in self._komponenten(stickstoff):
+
+            if len(atome) >= 3:
+                stickstoff_abzug += self._POLYSTICKSTOFF_ABZUG_JE_N * (len(atome) - 2)
+
+        stickstoff_abzug = min(stickstoff_abzug, self._POLYSTICKSTOFF_ABZUG_MAX)
+
+        if stickstoff_abzug:
+
+            e["punkte"] -= stickstoff_abzug
+            e["probleme"].append({
+                "modell": "Stickstoffkette",
+                "abzug": stickstoff_abzug
+            })
+            e["erklaerung"].append(
+                "Drei oder mehr direkt verbundene Stickstoffatome ausserhalb eines "
+                "aromatischen Rings - Polystickstoff ist sehr energiereich und instabil."
+            )
+
+        return e
+
+    def modell_kumulen_kette(self, daten):
+        """Zwei oder mehr benachbarte Kumulen-Zentren (Atom mit zwei
+        Doppelbindungen) ausserhalb von Ringen: Butatrien geht gerade noch,
+        Pentatetraen nicht. Ringe deckt modell_kumulene_im_ring ab."""
+
+        e = {"punkte": 0, "regeln": [], "probleme": [], "erklaerung": []}
+
+        doppel = defaultdict(set)
+
+        for b in daten["bindungen"]:
+
+            if b["ordnung"] == 2:
+                doppel[b["atom1"]].add(b["atom2"])
+                doppel[b["atom2"]].add(b["atom1"])
+
+        zentren = {a for a, partner in doppel.items() if len(partner) >= 2}
+
+        if len(zentren) < 2:
+            return e
+
+        ring_atome = set()
+        m = daten["molekuel"]
+
+        if m["anzahl_bindungen"] - m["anzahl_atome"] + m["fragmente"] > 0:
+            for ring in self._alle_ringe(daten):
+                ring_atome.update(ring)
+
+        kanten = [
+            (a, b) for a in zentren for b in doppel[a]
+            if b in zentren and a < b
+        ]
+
+        abzug = 0
+
+        for atome, _anzahl in self._komponenten(kanten):
+
+            if len(atome) >= 2 and not (atome & ring_atome):
+                abzug += self._KUMULEN_KETTE_ABZUG_JE_ZENTRUM * (len(atome) - 1)
+
+        abzug = min(abzug, self._KUMULEN_KETTE_ABZUG_MAX)
+
+        if abzug:
+
+            e["punkte"] -= abzug
+            e["probleme"].append({
+                "modell": "Kumulen-Kette",
+                "abzug": abzug
+            })
+            e["erklaerung"].append(
+                "Mehrere aufeinanderfolgende kumulierte Doppelbindungen "
+                "(C=C=C=C ...) - sehr reaktiv."
+            )
+
+        return e
+
+    # Hypervalente Zustaende, die es bei S/P wirklich gibt (SO2, SF6,
+    # H2SO4, H3PO4, DMSO, Phosphinoxide ...). Mit mindestens einem
+    # elektronegativen Partner (EN >= 3,0) kosten sie wenig; ohne (SH4,
+    # PH5) bleibt es beim vollen Abzug.
+    _HYPERVALENZ_BEKANNT = {"S": (4, 6), "P": (5,)}
+    _HYPERVALENZ_ABZUG_BEKANNT = 5
+    _HYPERVALENZ_ABZUG = 20
+    _HYPERVALENZ_ABZUG_OHNE_PARTNER = 40
+
+    def _hypervalenz_abzug(self, atom, benutzt, daten):
+
+        if benutzt in self._HYPERVALENZ_BEKANNT.get(atom["element"], ()):
+
+            for nachbar in daten["graph"][atom["id"]]:
+
+                element = daten["atom_by_id"][nachbar]["element"]
+                en = ELEMENT_INFO.get(element, {}).get("en")
+
+                if en is not None and en >= 3.0:
+                    return self._HYPERVALENZ_ABZUG_BEKANNT
+
+            # bekannter Zustand, aber ohne elektronegativen Partner (SH4, PH5)
+            return self._HYPERVALENZ_ABZUG_OHNE_PARTNER
+
+        return self._HYPERVALENZ_ABZUG
+
     def modell_hypervalenz(self, daten):
 
         e = {"punkte": 0, "regeln": [], "probleme": [], "erklaerung": []}
@@ -1231,7 +1463,8 @@ class Kritiker(PlausibilitaetsModelle):
 
             if benutzt > normale_valenz:
 
-                e["punkte"] -= 20
+                abzug = self._hypervalenz_abzug(atom, benutzt, daten)
+                e["punkte"] -= abzug
                 e["probleme"].append({
                     "modell": "Hypervalenz",
                     "atom": atom["id"],
