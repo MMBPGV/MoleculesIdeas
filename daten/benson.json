@@ -1,0 +1,823 @@
+{
+ "_meta": {
+  "einheit": "kcal/mol (Standardbildungsenthalpie Gasphase, 298 K)",
+  "status": "Pro Gruppe: 'test' = Molekuele mit bekannter Bildungsenthalpie, die mit dieser Gruppe auf +-1,0 kcal/mol (vereinzelt 1,5) getroffen werden (Referenzwerte NIST, aus dem Gedaechtnis); 'rmg' = Abgleich mit der RMG-Datenbank (gleich / abweichend / Quelle). Gruppen mit leerem 'test' sind UNGEPRUEFT. 'abweichend' bei N/S/Ester-Gruppen ist meist eine andere Zerlegung bei RMG, kein Fehler - die beiden Systeme duerfen nicht gemischt werden.",
+  "geprueft": false,
+  "schluessel_format": "Zentrum-(Ligand)n..., Ligandenreihenfolge: CO, Cd, Ct, Cb, O, N, S, C, H. Typen: C = sp3-C, Cd = C=C, Ct = C#C, Cb = aromatisches C, CO = Carbonyl-C.",
+  "quellen": {
+   "B76": "Benson, S.W.: Thermochemical Kinetics, 2nd ed., Wiley, New York 1976",
+   "CB93": "Cohen, N.; Benson, S.W.: Chem. Rev. 93 (1993) 2419",
+   "RMG": "RMG-database (ReactionMechanismGenerator/RMG-database), input/thermo/groups/group.py, abgerufen 15.10.2026; Lizenz vor Veroeffentlichung pruefen."
+  },
+  "anzahl": {
+   "gruppen": 81,
+   "mit_test": 79,
+   "ohne_test": 2
+  }
+ },
+ "gruppen": {
+  "C-(H)4": {
+   "wert": -17.89,
+   "q": "B76",
+   "test": [
+    "methan"
+   ],
+   "rmg": "gleich (Cs-HHHH -17.90)"
+  },
+  "C-(C)(H)3": {
+   "wert": -10.2,
+   "q": "B76",
+   "test": [
+    "1,1,1-trichlorethan",
+    "1-buten",
+    "1-butin",
+    "2-butanon",
+    "2-propanthiol",
+    "3-methyl-1-buten",
+    "..."
+   ],
+   "rmg": "gleich (Cs-CsHHH -10.20)"
+  },
+  "C-(C)2(H)2": {
+   "wert": -4.93,
+   "q": "B76",
+   "test": [
+    "cyclohexan",
+    "cyclopropan",
+    "propan"
+   ],
+   "rmg": "gleich (Cs-CsCsHH -4.93)"
+  },
+  "C-(C)3(H)": {
+   "wert": -1.9,
+   "q": "B76",
+   "test": [
+    "isobutan"
+   ],
+   "rmg": "gleich (Cs-CsCsCsH -1.90)"
+  },
+  "C-(C)4": {
+   "wert": 0.5,
+   "q": "B76",
+   "test": [
+    "neopentan"
+   ],
+   "rmg": "gleich (Cs-CsCsCsCs 0.50)"
+  },
+  "C-(Cd)(H)3": {
+   "wert": -10.2,
+   "q": "B76",
+   "test": [
+    "isobuten",
+    "isopren",
+    "propen"
+   ],
+   "rmg": "gleich (Cs-(Cds-Cd)HHH -10.20)"
+  },
+  "C-(Cd)(C)(H)2": {
+   "wert": -4.76,
+   "q": "B76",
+   "test": [
+    "1-buten"
+   ],
+   "rmg": "gleich (Cs-(Cds-Cd)CsHH -4.76)"
+  },
+  "C-(Cd)(C)2(H)": {
+   "wert": -1.48,
+   "q": "B76",
+   "test": [
+    "3-methyl-1-buten"
+   ],
+   "rmg": "gleich (Cs-(Cds-Cd)CsCsH -1.48)"
+  },
+  "C-(Ct)(H)3": {
+   "wert": -10.2,
+   "q": "B76",
+   "test": [
+    "propin"
+   ],
+   "rmg": "gleich (Cs-CtHHH -10.20)"
+  },
+  "C-(Ct)(C)(H)2": {
+   "wert": -4.73,
+   "q": "B76",
+   "test": [
+    "1-butin"
+   ],
+   "rmg": "gleich (Cs-CtCsHH -4.73)"
+  },
+  "C-(Cb)(H)3": {
+   "wert": -10.2,
+   "q": "B76",
+   "test": [
+    "toluol"
+   ],
+   "rmg": "gleich (Cs-CbHHH -10.20)"
+  },
+  "C-(Cb)(C)(H)2": {
+   "wert": -4.86,
+   "q": "B76",
+   "test": [
+    "ethylbenzol"
+   ],
+   "rmg": "gleich (Cs-CbCsHH -4.86)"
+  },
+  "C-(Cb)(C)2(H)": {
+   "wert": -0.98,
+   "q": "B76",
+   "test": [
+    "cumol"
+   ],
+   "rmg": "gleich (Cs-CbCsCsH -0.98)"
+  },
+  "C-(CO)(H)3": {
+   "wert": -10.2,
+   "q": "B76",
+   "test": [
+    "2-butanon",
+    "acetaldehyd",
+    "aceton",
+    "essigsaeure",
+    "methylacetat"
+   ],
+   "rmg": "gleich (Cs-(Cds-O2d)HHH -10.25)"
+  },
+  "C-(CO)(C)(H)2": {
+   "wert": -5.2,
+   "q": "B76",
+   "test": [
+    "2-butanon"
+   ],
+   "rmg": "gleich (Cs-(Cds-O2d)CsHH -5.14)"
+  },
+  "C-(O)(H)3": {
+   "wert": -10.2,
+   "q": "B76",
+   "test": [
+    "anisol",
+    "dimethylether",
+    "methylacetat",
+    "methylformiat"
+   ],
+   "rmg": "kein Gegenstueck"
+  },
+  "C-(O)(C)(H)2": {
+   "wert": -8.1,
+   "q": "B76",
+   "test": [
+    "ethanol"
+   ],
+   "rmg": "kein Gegenstueck"
+  },
+  "C-(O)(C)2(H)": {
+   "wert": -7.2,
+   "q": "B76",
+   "test": [
+    "isopropanol"
+   ],
+   "rmg": "kein Gegenstueck"
+  },
+  "C-(O)(C)3": {
+   "wert": -6.6,
+   "q": "B76",
+   "test": [
+    "tert-butanol"
+   ],
+   "rmg": "kein Gegenstueck"
+  },
+  "C-(N)(H)3": {
+   "wert": -10.2,
+   "q": "B76",
+   "test": [
+    "dimethylamin",
+    "methylamin",
+    "trimethylamin"
+   ],
+   "rmg": "abweichend (Cs-N3sHHH -5.68, d=+4.52)"
+  },
+  "C-(N)(C)(H)2": {
+   "wert": -6.6,
+   "q": "B76",
+   "test": [
+    "ethylamin"
+   ],
+   "rmg": "abweichend (Cs-N3sCsHH -2.61, d=+3.99)"
+  },
+  "C-(N)(C)2(H)": {
+   "wert": -5.2,
+   "q": "B76",
+   "test": [
+    "isopropylamin"
+   ],
+   "rmg": "abweichend (Cs-N3sCsCsH 1.17, d=+6.37)"
+  },
+  "C-(N)(C)3": {
+   "wert": -3.2,
+   "q": "B76",
+   "test": [
+    "tert-butylamin"
+   ],
+   "rmg": "abweichend (Cs-N3sCsCsCs 5.37, d=+8.57)"
+  },
+  "C-(S)(H)3": {
+   "wert": -10.2,
+   "q": "B76",
+   "test": [
+    "dimethylsulfid",
+    "methanthiol"
+   ],
+   "rmg": "abweichend (Cs-S2sHHH 1.96, d=+12.16)"
+  },
+  "C-(S)(C)(H)2": {
+   "wert": -5.65,
+   "q": "B76",
+   "test": [
+    "ethanthiol"
+   ],
+   "rmg": "kein Gegenstueck"
+  },
+  "C-(S)(C)2(H)": {
+   "wert": -2.64,
+   "q": "B76",
+   "test": [
+    "2-propanthiol"
+   ],
+   "rmg": "kein Gegenstueck"
+  },
+  "Cd-(H)2": {
+   "wert": 6.26,
+   "q": "B76",
+   "test": [
+    "1-buten",
+    "3-methyl-1-buten",
+    "allen",
+    "butadien",
+    "ethen",
+    "isobuten",
+    "..."
+   ],
+   "rmg": "gleich (Cds-CdsHH 6.26)"
+  },
+  "Cd-(C)(H)": {
+   "wert": 8.59,
+   "q": "B76",
+   "test": [
+    "1-buten",
+    "3-methyl-1-buten",
+    "propen"
+   ],
+   "rmg": "gleich (Cds-CdsCsH 8.59)"
+  },
+  "Cd-(C)2": {
+   "wert": 10.34,
+   "q": "B76",
+   "test": [
+    "isobuten"
+   ],
+   "rmg": "gleich (Cds-CdsCsCs 10.34)"
+  },
+  "Cd-(Cd)(H)": {
+   "wert": 6.78,
+   "q": "B76",
+   "test": [
+    "butadien",
+    "isopren"
+   ],
+   "rmg": "gleich (Cds-Cds(Cds-Cd)H 6.78)"
+  },
+  "Cd-(Cb)(H)": {
+   "wert": 6.78,
+   "q": "B76",
+   "test": [
+    "styrol"
+   ],
+   "rmg": "gleich (Cds-CdsCbH 6.78)"
+  },
+  "Cd-(Cd)(C)": {
+   "wert": 8.88,
+   "q": "B76",
+   "test": [
+    "isopren"
+   ],
+   "rmg": "gleich (Cds-Cds(Cds-Cd)Cs 8.88)"
+  },
+  "Ct-(H)": {
+   "wert": 26.93,
+   "q": "B76",
+   "test": [
+    "1-butin",
+    "ethin",
+    "propin"
+   ],
+   "rmg": "gleich (Ct-CtH 26.93)"
+  },
+  "Ct-(C)": {
+   "wert": 27.55,
+   "q": "B76",
+   "test": [
+    "1-butin",
+    "propin"
+   ],
+   "rmg": "gleich (Ct-CtCs 27.55)"
+  },
+  "Ct-(Cd)": {
+   "wert": 29.2,
+   "q": "B76",
+   "test": [],
+   "rmg": "abweichend (Ct-Ct(Cds-Cd) 28.20, d=-1.00)"
+  },
+  "Ct-(Ct)": {
+   "wert": 25.55,
+   "q": "B76",
+   "test": [],
+   "rmg": "gleich (Ct-CtCt 25.60)"
+  },
+  "Cb-(H)": {
+   "wert": 3.3,
+   "q": "B76",
+   "test": [
+    "anilin",
+    "anisol",
+    "benzol",
+    "biphenyl",
+    "brombenzol",
+    "chlorbenzol",
+    "..."
+   ],
+   "rmg": "gleich (Cb-H 3.30)"
+  },
+  "Cb-(C)": {
+   "wert": 5.51,
+   "q": "B76",
+   "test": [
+    "cumol",
+    "ethylbenzol",
+    "toluol"
+   ],
+   "rmg": "gleich (Cb-Cs 5.51)"
+  },
+  "Cb-(O)": {
+   "wert": -0.9,
+   "q": "B76",
+   "test": [
+    "anisol",
+    "phenol"
+   ],
+   "rmg": "gleich (Cb-O2s -0.90)"
+  },
+  "Cb-(Cb)": {
+   "wert": 4.96,
+   "q": "B76",
+   "test": [
+    "biphenyl",
+    "naphthalin"
+   ],
+   "rmg": "gleich (Cb-Cb 4.96)"
+  },
+  "CO-(H)2": {
+   "wert": -26.0,
+   "q": "B76",
+   "test": [
+    "formaldehyd"
+   ],
+   "rmg": "gleich (Cds-OdHH -25.95)"
+  },
+  "CO-(C)(H)": {
+   "wert": -29.1,
+   "q": "B76",
+   "test": [
+    "acetaldehyd"
+   ],
+   "rmg": "abweichend (Cds-OdCsH -29.49, d=-0.39)"
+  },
+  "CO-(C)2": {
+   "wert": -31.4,
+   "q": "B76",
+   "test": [
+    "2-butanon",
+    "aceton"
+   ],
+   "rmg": "gleich (Cds-OdCsCs -31.60)"
+  },
+  "CO-(O)(C)": {
+   "wert": -35.1,
+   "q": "B76",
+   "test": [
+    "essigsaeure",
+    "methylacetat"
+   ],
+   "rmg": "kein Gegenstueck"
+  },
+  "CO-(O)(H)": {
+   "wert": -32.0,
+   "q": "B76",
+   "test": [
+    "ameisensaeure",
+    "methylformiat"
+   ],
+   "rmg": "kein Gegenstueck"
+  },
+  "O-(H)2": {
+   "wert": -57.8,
+   "q": "B76",
+   "test": [
+    "wasser"
+   ],
+   "rmg": "gleich (O2s-HH -57.80)"
+  },
+  "O-(C)(H)": {
+   "wert": -37.9,
+   "q": "B76",
+   "test": [
+    "ethanol",
+    "isopropanol",
+    "tert-butanol"
+   ],
+   "rmg": "abweichend (O2s-CsH -39.48, d=-1.58)"
+  },
+  "O-(C)2": {
+   "wert": -23.2,
+   "q": "B76",
+   "test": [
+    "dimethylether"
+   ],
+   "rmg": "abweichend (O2s-CsCs -23.57, d=-0.37)"
+  },
+  "O-(Cb)(H)": {
+   "wert": -37.9,
+   "q": "B76",
+   "test": [
+    "phenol"
+   ],
+   "rmg": "gleich (O2s-CbH -37.90)"
+  },
+  "O-(CO)(C)": {
+   "wert": -43.1,
+   "q": "B76",
+   "test": [
+    "methylacetat",
+    "methylformiat"
+   ],
+   "rmg": "abweichend (O2s-Cs(Cds-O2d) -24.43, d=+18.67)"
+  },
+  "O-(CO)(H)": {
+   "wert": -58.1,
+   "q": "B76",
+   "test": [
+    "ameisensaeure",
+    "essigsaeure"
+   ],
+   "rmg": "abweichend (O2s-(Cds-O2d)H -39.48, d=+18.62)"
+  },
+  "N-(H)3": {
+   "wert": -11.0,
+   "q": "B76",
+   "test": [
+    "ammoniak"
+   ],
+   "rmg": "abweichend (N3s-HHH -10.72, d=+0.28)"
+  },
+  "N-(C)(H)2": {
+   "wert": 4.8,
+   "q": "B76",
+   "test": [
+    "ethylamin",
+    "isopropylamin",
+    "methylamin",
+    "tert-butylamin"
+   ],
+   "rmg": "abweichend (N3s-CsHH 0.86, d=-3.94)"
+  },
+  "N-(C)2(H)": {
+   "wert": 15.4,
+   "q": "B76",
+   "test": [
+    "dimethylamin"
+   ],
+   "rmg": "abweichend (N3s-CsCsH 7.33, d=-8.07)"
+  },
+  "N-(C)3": {
+   "wert": 24.4,
+   "q": "B76",
+   "test": [
+    "trimethylamin"
+   ],
+   "rmg": "abweichend (N3s-CsCsCs 11.68, d=-12.72)"
+  },
+  "S-(H)2": {
+   "wert": -4.9,
+   "q": "B76",
+   "test": [
+    "schwefelwasserstoff"
+   ],
+   "rmg": "abweichend (S2s-HH -5.38, d=-0.48)"
+  },
+  "S-(C)(H)": {
+   "wert": 4.62,
+   "q": "B76",
+   "test": [
+    "2-propanthiol",
+    "ethanthiol",
+    "methanthiol"
+   ],
+   "rmg": "abweichend (S2s-CsH -7.93, d=-12.55)"
+  },
+  "S-(C)2": {
+   "wert": 11.51,
+   "q": "B76",
+   "test": [
+    "dimethylsulfid"
+   ],
+   "rmg": "abweichend (S2s-CsCs -12.89, d=-24.40)"
+  },
+  "C-(F)(H)3": {
+   "wert": -56.43,
+   "q": "RMG",
+   "rmg_label": "CsFHHH",
+   "rmg_fehler": 2.95,
+   "test": [
+    "fluormethan"
+   ],
+   "rmg": "Quelle (CsFHHH)"
+  },
+  "C-(F)2(H)2": {
+   "wert": -107.86,
+   "q": "RMG",
+   "rmg_label": "CsFFHH",
+   "rmg_fehler": 2.95,
+   "test": [
+    "difluormethan"
+   ],
+   "rmg": "Quelle (CsFFHH)"
+  },
+  "C-(F)3(H)": {
+   "wert": -166.46,
+   "q": "RMG",
+   "rmg_label": "CsFFFH",
+   "rmg_fehler": 2.95,
+   "test": [
+    "trifluormethan"
+   ],
+   "rmg": "Quelle (CsFFFH)"
+  },
+  "C-(F)4": {
+   "wert": -223.07,
+   "q": "RMG",
+   "rmg_label": "CsFFFF",
+   "rmg_fehler": 2.95,
+   "test": [
+    "tetrafluormethan"
+   ],
+   "rmg": "Quelle (CsFFFF)"
+  },
+  "C-(Cl)(H)3": {
+   "wert": -19.5,
+   "q": "RMG",
+   "rmg_label": "CsClHHH",
+   "rmg_fehler": 2.95,
+   "test": [
+    "chlormethan"
+   ],
+   "rmg": "Quelle (CsClHHH)"
+  },
+  "C-(Cl)2(H)2": {
+   "wert": -22.24,
+   "q": "RMG",
+   "rmg_label": "CsClClHH",
+   "rmg_fehler": 2.95,
+   "test": [
+    "dichlormethan"
+   ],
+   "rmg": "Quelle (CsClClHH)"
+  },
+  "C-(Cl)3(H)": {
+   "wert": -24.16,
+   "q": "RMG",
+   "rmg_label": "CsClClClH",
+   "rmg_fehler": 2.95,
+   "test": [
+    "chloroform"
+   ],
+   "rmg": "Quelle (CsClClClH)"
+  },
+  "C-(Cl)4": {
+   "wert": -23.64,
+   "q": "RMG",
+   "rmg_label": "CsClClClCl",
+   "rmg_fehler": 2.95,
+   "test": [
+    "tetrachlormethan"
+   ],
+   "rmg": "Quelle (CsClClClCl)"
+  },
+  "C-(Br)(H)3": {
+   "wert": -8.41,
+   "q": "RMG",
+   "rmg_label": "CsBrHHH",
+   "rmg_fehler": 2.95,
+   "test": [
+    "brommethan"
+   ],
+   "rmg": "Quelle (CsBrHHH)"
+  },
+  "C-(Br)(C)(H)2": {
+   "wert": -3.61,
+   "q": "RMG",
+   "rmg_label": "CsBrCHH",
+   "rmg_fehler": 0.22,
+   "test": [
+    "bromethan"
+   ],
+   "rmg": "Quelle (CsBrCHH)"
+  },
+  "C-(F)(C)(H)2": {
+   "wert": -51.77,
+   "q": "RMG",
+   "rmg_label": "CsCFHH",
+   "rmg_fehler": 0.24,
+   "test": [
+    "fluorethan"
+   ],
+   "rmg": "Quelle (CsCFHH)"
+  },
+  "C-(Cl)(C)3": {
+   "wert": -13.72,
+   "q": "RMG",
+   "rmg_label": "CsCCCCl",
+   "rmg_fehler": 0.6,
+   "test": [
+    "tert-butylchlorid"
+   ],
+   "rmg": "Quelle (CsCCCCl)"
+  },
+  "C-(Cl)3(C)": {
+   "wert": -23.55,
+   "q": "RMG",
+   "rmg_label": "CsCClClCl",
+   "rmg_fehler": 0.37,
+   "test": [
+    "1,1,1-trichlorethan"
+   ],
+   "rmg": "Quelle (CsCClClCl)"
+  },
+  "Cd-(Cl)2": {
+   "wert": -5.38,
+   "q": "RMG",
+   "rmg_label": "CdCClCl",
+   "rmg_fehler": 0.35,
+   "test": [
+    "vinylidenchlorid"
+   ],
+   "rmg": "Quelle (CdCClCl)"
+  },
+  "Cb-(Cl)": {
+   "wert": -4.02,
+   "q": "RMG",
+   "rmg_label": "Cb-Cl",
+   "rmg_fehler": null,
+   "test": [
+    "chlorbenzol"
+   ],
+   "rmg": "Quelle (Cb-Cl)"
+  },
+  "Cb-(F)": {
+   "wert": -43.93,
+   "q": "RMG",
+   "rmg_label": "Cb-F",
+   "rmg_fehler": null,
+   "test": [
+    "fluorbenzol"
+   ],
+   "rmg": "Quelle (Cb-F)"
+  },
+  "Cb-(Br)": {
+   "wert": 8.5,
+   "q": "RMG",
+   "rmg_label": "Cb-Br",
+   "rmg_fehler": null,
+   "test": [
+    "brombenzol"
+   ],
+   "rmg": "Quelle (Cb-Br)"
+  },
+  "Cb-(N)": {
+   "wert": -0.5,
+   "q": "RMG",
+   "rmg_label": "Cb-N3s",
+   "rmg_fehler": null,
+   "test": [
+    "anilin"
+   ],
+   "rmg": "Quelle (Cb-N3s)"
+  },
+  "N-(Cb)(H)2": {
+   "wert": 4.8,
+   "q": "RMG",
+   "rmg_label": "N3s-CbHH",
+   "rmg_fehler": null,
+   "test": [
+    "anilin"
+   ],
+   "rmg": "Quelle (N3s-CbHH)"
+  },
+  "O-(Cb)(C)": {
+   "wert": -22.6,
+   "q": "RMG",
+   "rmg_label": "O2s-CsCb",
+   "rmg_fehler": 0.19,
+   "test": [
+    "anisol"
+   ],
+   "rmg": "Quelle (O2s-CsCb)"
+  },
+  "Cb-(Cd)": {
+   "wert": 5.69,
+   "q": "RMG",
+   "rmg_label": "Cb-(Cds-Cd)",
+   "rmg_fehler": 0.2,
+   "test": [
+    "styrol"
+   ],
+   "rmg": "Quelle (Cb-(Cds-Cd))"
+  },
+  "Cdd-(Od)2": {
+   "wert": -94.05,
+   "q": "RMG",
+   "rmg_label": "Cdd-OdOd",
+   "rmg_fehler": 0.03,
+   "test": [
+    "kohlendioxid"
+   ],
+   "rmg": "Quelle (Cdd-OdOd)"
+  },
+  "Cdd-(Cd)2": {
+   "wert": 34.2,
+   "q": "RMG",
+   "rmg_label": "Cdd-CdCd",
+   "rmg_fehler": 0.2,
+   "test": [
+    "allen"
+   ],
+   "rmg": "Quelle (Cdd-CdCd)"
+  }
+ },
+ "ringkorrekturen": {
+  "_hinweis": "Schluessel: Heteroatom-Praefix (C = reiner Kohlenstoffring):Ringgroesse:Anzahl Ring-Doppelbindungen. Aromatischer 6C-Ring: 0.",
+  "C:3:0": {
+   "wert": 27.6,
+   "q": "B76"
+  },
+  "C:4:0": {
+   "wert": 26.2,
+   "q": "B76"
+  },
+  "C:5:0": {
+   "wert": 6.3,
+   "q": "B76"
+  },
+  "C:6:0": {
+   "wert": 0.0,
+   "q": "B76"
+  },
+  "C:7:0": {
+   "wert": 6.4,
+   "q": "B76"
+  },
+  "C:8:0": {
+   "wert": 9.9,
+   "q": "B76"
+  },
+  "C:3:1": {
+   "wert": 53.7,
+   "q": "B76"
+  },
+  "C:4:1": {
+   "wert": 29.8,
+   "q": "B76"
+  },
+  "C:5:1": {
+   "wert": 5.9,
+   "q": "B76"
+  },
+  "C:6:1": {
+   "wert": 1.4,
+   "q": "B76"
+  },
+  "O:3:0": {
+   "wert": 27.6,
+   "q": "B76"
+  },
+  "O:4:0": {
+   "wert": 25.5,
+   "q": "B76"
+  },
+  "O:5:0": {
+   "wert": 5.9,
+   "q": "B76"
+  },
+  "O:6:0": {
+   "wert": 0.5,
+   "q": "B76"
+  }
+ }
+}

@@ -36,20 +36,28 @@ from chemlabor.labor import formel
 from chemlabor.texte import t
 
 
-SPALTEN = ("nr", "phase", "formel", "atome", "punkte", "urteil", "rdkit", "pubchem")
+SPALTEN = ("nr", "phase", "formel", "atome", "punkte", "urteil", "rdkit", "pubchem", "qc")
 
 BREITE = {
     "nr": 50, "phase": 90, "formel": 110, "atome": 55,
-    "punkte": 60, "urteil": 140, "rdkit": 55, "pubchem": 90,
+    "punkte": 60, "urteil": 140, "rdkit": 55, "pubchem": 90, "qc": 90,
 }
 
 # So viele verschiedene Strukturen werden pro Klick bei PubChem abgefragt
 # (jede neue Struktur kostet ~0,25 s wegen des PubChem-Limits).
 NEUHEIT_MAX_STRUKTUREN = 300
 
+# Quantenchemie (ANI-2x / MACE): so viele verschiedene Strukturen pro Klick, beste Kritiker-Punkte zuerst,
+# und nur bis zu dieser Zahl schwerer Atome (sonst dauert die Optimierung zu lange)
+QC_MAX_STRUKTUREN = 20
+QC_MAX_SCHWERE_ATOME = 25
+
 
 def beschriftung(spalte):
     """Spaltenueberschrift in der aktiven Sprache."""
+
+    if spalte == "qc":
+        return "ΔHf (QC)"
 
     return t(f"spalte.{spalte}")
 
@@ -72,6 +80,12 @@ class TabErgebnisse(ttk.Frame):
         self._neuheit_abbruch = threading.Event()
         self._neuheit_faden = None
         self._poll_id = None
+
+        self.qc_ergebnisse = {}
+        self.qc_queue = queue.Queue()
+        self._qc_laeuft = False
+        self._qc_abbruch = threading.Event()
+        self._qc_faden = None
 
         self.duplikate_var = tk.BooleanVar(value=False)
         self.offline_var = tk.BooleanVar(value=False)
@@ -143,6 +157,9 @@ class TabErgebnisse(ttk.Frame):
 
         ttk.Button(unten, text=t("erg.export_button"), command=self._export_klick).pack(side="left")
 
+        self.qc_button = ttk.Button(unten, text="Quantenchemie (Top 20)", command=self._qc_klick)
+        self.qc_button.pack(side="left", padx=(12, 0))
+
         self.status = ttk.Label(self, text="", style="Gedimmt.TLabel", padding=(8, 0, 8, 4))
         self.status.pack(fill="x")
 
@@ -161,7 +178,7 @@ class TabErgebnisse(ttk.Frame):
             self.tabelle.heading(
                 spalte,
                 text=beschriftung(spalte),
-                command=lambda s=spalte: self._sortiere(s)
+                command=(lambda s=spalte: self._sortiere(s)) if spalte != "qc" else (lambda: None)
             )
 
             self.tabelle.column(
@@ -184,8 +201,39 @@ class TabErgebnisse(ttk.Frame):
         rechts = ttk.PanedWindow(teiler, orient="vertical")
         teiler.add(rechts, weight=2)
 
-        self.lewis = LewisAnsicht(rechts)
-        rechts.add(self.lewis, weight=3)
+        # Rechts oben: Reiter "Lewis" und "3D" (siehe ansicht3d.py)
+        self._ansichten = ttk.Notebook(rechts)
+        rechts.add(self._ansichten, weight=3)
+
+        self.lewis = LewisAnsicht(self._ansichten)
+        self._ansichten.add(self.lewis, text="Lewis")
+
+        self.ansicht3d = None
+        self._3d_offen = None
+
+        try:
+
+            from chemlabor.gui.ansicht3d import Ansicht3D
+
+            self.ansicht3d = Ansicht3D(
+                self._ansichten,
+                hintergrund=FARBEN["panel_hell"],
+                vordergrund=FARBEN["text"]
+            )
+
+            self._ansichten.add(self.ansicht3d, text="3D")
+            self._ansichten.bind("<<NotebookTabChanged>>", self._3d_tab_gewechselt)
+
+        except ImportError as fehler:
+
+            hinweis = ttk.Frame(self._ansichten)
+
+            ttk.Label(
+                hinweis,
+                text=f"3D-Ansicht nicht verfügbar: {fehler}\n(Abhilfe: pip install matplotlib numpy)"
+            ).pack(padx=10, pady=10)
+
+            self._ansichten.add(hinweis, text="3D")
 
         self.detail = scrolledtext.ScrolledText(
             rechts, wrap="word", height=12, state="disabled",
@@ -219,6 +267,7 @@ class TabErgebnisse(ttk.Frame):
         if kinder:
             self.tabelle.delete(*kinder)
 
+        self.qc_ergebnisse.clear()
         self.lewis.leeren()
         self._setze_detail("")
         self.anzahl_label.config(text="")
@@ -258,6 +307,7 @@ class TabErgebnisse(ttk.Frame):
                     uebersetze_urteil(analyse["bewertung"]["urteil"]),
                     t("rdkit.ja_zelle") if analyse.get("rdkit_gueltig") else t("rdkit.nein_zelle"),
                     self.modell.pubchem_text(nummer),
+                    self._qc_text(nummer),
                 ),
                 tags=(pruefung["status"],) if pruefung else ()
             )
@@ -314,8 +364,43 @@ class TabErgebnisse(ttk.Frame):
             return
 
         self.lewis.zeige(eintrag[2])
+        self._melde_3d(eintrag[2], eintrag[3])
 
-        self._setze_detail(baue_detailtext(eintrag, self.modell.neuheit.get(eintrag[0])))
+        self._setze_detail(
+            baue_detailtext(eintrag, self.modell.neuheit.get(eintrag[0])) + self._qc_detail(eintrag[0])
+        )
+
+    # ------------------------------------------------------
+    # 3D-Ansicht: gezeichnet wird erst, wenn der Reiter sichtbar ist
+    # ------------------------------------------------------
+
+    def _melde_3d(self, molekuel, analyse):
+
+        if self.ansicht3d is None:
+            return
+
+        self._3d_offen = (molekuel, analyse)
+
+        if self._ansichten.select() == str(self.ansicht3d):
+            self._zeichne_3d()
+
+    def _3d_tab_gewechselt(self, _ereignis=None):
+
+        if self.ansicht3d is not None and self._ansichten.select() == str(self.ansicht3d):
+            self._zeichne_3d()
+
+    def _zeichne_3d(self):
+
+        if self._3d_offen is None:
+            return
+
+        molekuel, analyse = self._3d_offen
+        self._3d_offen = None
+
+        try:
+            self.ansicht3d.zeige(molekuel, analyse)
+        except Exception as fehler:
+            self.status.config(text=f"3D-Ansicht fehlgeschlagen: {type(fehler).__name__}: {fehler}")
 
     def _doppelklick(self, _ereignis):
 
@@ -477,6 +562,11 @@ class TabErgebnisse(ttk.Frame):
 
             pass
 
+        try:
+            self._poll_qc()
+        except Exception as fehler:
+            self.status.config(text=f"Quantenchemie: {type(fehler).__name__}: {fehler}")
+
         self._poll_id = self.after(150, self._poll_neuheit)
 
     def _neuheit_beenden(self):
@@ -506,11 +596,183 @@ class TabErgebnisse(ttk.Frame):
             g=zaehler.get("ungeprueft", 0)
         )
 
+    # ------------------------------------------------------
+    # Quantenchemie (chemlabor/chemie/quantenchemie.py)
+    # ------------------------------------------------------
+
+    def _qc_text(self, nummer):
+
+        r = self.qc_ergebnisse.get(nummer)
+
+        if r is None:
+            return ""
+
+        if not r["anwendbar"]:
+            return "n/a"
+
+        if not r["intakt"]:
+            return "zerfällt"
+
+        return f"{r['dhf_kcal']:+.0f}"
+
+    def _qc_detail(self, nummer):
+
+        r = self.qc_ergebnisse.get(nummer)
+
+        if r is None:
+            return ""
+
+        if not r["anwendbar"]:
+            return f"\n\nQuantenchemie: nicht anwendbar - {r['grund']}"
+
+        text = (f"\n\nQuantenchemie ({r.get('modell')}): Bildungsenthalpie ca. {r['dhf_kcal']:+.0f} kcal/mol "
+                f"(Fehler typisch ±{r.get('fehler_kcal') or '10-30'}), {r['dauer_s']} s.")
+
+        if r["intakt"]:
+            text += " Die Struktur bleibt nach der Optimierung erhalten."
+        else:
+            text += (f" ACHTUNG: nach der Optimierung brechen {len(r['gebrochen'])} Bindung(en) auf, "
+                     f"{len(r['neu'])} neue entstehen - die gezeichnete Struktur ist keine stabile Geometrie.")
+
+        return text
+
+    def _qc_klick(self):
+        """Rechnet die besten sichtbaren Strukturen (oder bricht den Lauf ab)."""
+
+        if self._qc_laeuft:
+            self._qc_abbruch.set()
+            self.qc_button.config(state="disabled")
+            return
+
+        if not self._sichtbar:
+            self.status.config(text=t("erg.keine_zeilen"))
+            return
+
+        try:
+            from chemlabor.chemie import quantenchemie
+        except ImportError as fehler:
+            self.status.config(text=f"Quantenchemie nicht verfügbar: {fehler}")
+            return
+
+        ok, hinweis = quantenchemie.verfuegbar()
+
+        if not ok:
+            self.status.config(text=hinweis)
+            return
+
+        self._qc_abbruch = threading.Event()
+        self._qc_laeuft = True
+        self.qc_button.config(text="Abbrechen")
+        self.status.config(text="Quantenchemie: starte ...")
+
+        self._qc_faden = threading.Thread(
+            target=self._qc_worker, args=(list(self._sichtbar), self._qc_abbruch), daemon=True
+        )
+        self._qc_faden.start()
+
+    def _qc_worker(self, eintraege, abbruch):
+
+        try:
+            from chemlabor.chemie import quantenchemie
+
+            qc = quantenchemie.Quantenchemie()
+
+            gruppen = {}      # Struktur -> Nummern (gleiche Struktur nur einmal rechnen)
+            reihenfolge = []
+
+            for e in sorted(eintraege, key=punkte_von, reverse=True):
+
+                nummer, _phase, molekuel, analyse = e
+
+                if not analyse.get("rdkit_gueltig"):
+                    continue
+
+                schluessel = neuheit.struktur_schluessel(molekuel)
+                key = schluessel["inchikey"] if schluessel else f"nr{nummer}"
+
+                if key not in gruppen:
+
+                    if len(reihenfolge) >= QC_MAX_STRUKTUREN:
+                        continue
+
+                    gruppen[key] = []
+                    reihenfolge.append((key, molekuel))
+
+                gruppen[key].append(nummer)
+
+            zerfallen = 0
+
+            for i, (key, molekuel) in enumerate(reihenfolge, start=1):
+
+                if abbruch.is_set():
+                    break
+
+                schwer = sum(1 for a in molekuel["atoms"] if a["element"] != "H")
+
+                if schwer > QC_MAX_SCHWERE_ATOME:
+                    r = {"anwendbar": False, "grund": f"zu gross ({schwer} schwere Atome, Grenze {QC_MAX_SCHWERE_ATOME})"}
+                else:
+                    r = qc.berechne(molekuel)
+
+                if r["anwendbar"] and not r["intakt"]:
+                    zerfallen += 1
+
+                self.qc_queue.put(("ergebnis", gruppen[key], r))
+                self.qc_queue.put(("fortschritt", f"Quantenchemie: {i} von {len(reihenfolge)} ..."))
+
+            self.qc_queue.put(("fertig", len(reihenfolge), zerfallen, abbruch.is_set()))
+
+        except Exception as fehler:
+
+            self.qc_queue.put(("fehler", f"{type(fehler).__name__}: {fehler}"))
+
+    def _poll_qc(self):
+
+        neu = False
+
+        while True:
+
+            try:
+                nachricht = self.qc_queue.get_nowait()
+            except queue.Empty:
+                break
+
+            art = nachricht[0]
+
+            if art == "ergebnis":
+
+                for nummer in nachricht[1]:
+                    self.qc_ergebnisse[nummer] = nachricht[2]
+
+                neu = True
+
+            elif art == "fortschritt":
+
+                self.status.config(text=nachricht[1])
+
+            elif art in ("fertig", "fehler"):
+
+                self._qc_laeuft = False
+                self.qc_button.config(text="Quantenchemie (Top 20)", state="normal")
+
+                if art == "fertig":
+                    text = f"Quantenchemie: {nachricht[1]} Strukturen gerechnet, {nachricht[2]} zerfallen bei der Optimierung."
+                    if nachricht[3]:
+                        text += " (abgebrochen)"
+                    self.status.config(text=text)
+                    self.log(text)
+                else:
+                    self.status.config(text=f"Quantenchemie: {nachricht[1]}")
+
+        if neu:
+            self.aktualisiere()
+
     def beenden_und_warten(self, sekunden=3):
         """Bricht eine laufende PubChem-Pruefung ab und wartet kurz auf
         den Thread (vor dem Schliessen des Fensters)."""
 
         self._neuheit_abbruch.set()
+        self._qc_abbruch.set()
 
         faden = self._neuheit_faden
 

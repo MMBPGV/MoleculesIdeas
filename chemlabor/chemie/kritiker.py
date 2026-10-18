@@ -1,5 +1,8 @@
 import json
+import math
 from collections import defaultdict, deque
+from chemlabor.chemie import benson
+from chemlabor.chemie import zerfall
 from chemlabor.chemie.kritiker_regeln import PlausibilitaetsModelle
 
 # ==========================================================
@@ -62,12 +65,15 @@ class Kritiker(PlausibilitaetsModelle):
             self.modell_mesomerie,
             self.modell_geometrie,
             self.modell_ringe,
+            self.modell_zerfall,
+            self.modell_benson,
             self.modell_hypervalenz,
             self.modell_kumulene_im_ring,
             self.modell_hypohalogenite,
             self.modell_schwere_mehrfachbindungen,
             self.modell_schwache_ketten,
-            self.modell_kumulen_kette
+            self.modell_kumulen_kette,
+            self.modell_antiaromatisch
 
         ]
 
@@ -400,7 +406,9 @@ class Kritiker(PlausibilitaetsModelle):
 
             frei = self._offene_valenz(atom)
 
-            if frei == 0:
+            # frei < 0 = Valenz UEBERSCHRITTEN - das bestraft modell_valenz;
+            # hier wuerde die negative Zahl sonst als Bonus wirken.
+            if frei <= 0:
                 continue
 
             if frei % 2 == 1:
@@ -608,6 +616,10 @@ class Kritiker(PlausibilitaetsModelle):
 
     _SCHWACHE_BINDUNG_SCHWELLE = 250  # kJ/mol
 
+    # Zusatzabzug je Bindungstyp (nur Einfachbindungen erreichen ihn, weil die Doppelbindung O=O
+    # ueber der Schwelle liegt). Peroxide (H2O2, ROOR, Persaeuren) sind isolierbar, aber explosiv.
+    _SCHWACHE_BINDUNG_EXTRA = {frozenset(["O", "O"]): 20}
+
     def modell_elektronegativitaet(self, daten):
 
         e = {"punkte": 0, "regeln": [], "probleme": [], "erklaerung": []}
@@ -646,6 +658,7 @@ class Kritiker(PlausibilitaetsModelle):
             if energie is not None and energie < self._SCHWACHE_BINDUNG_SCHWELLE:
 
                 abzug = round((self._SCHWACHE_BINDUNG_SCHWELLE - energie) / 10)
+                abzug += self._SCHWACHE_BINDUNG_EXTRA.get(frozenset([e1, e2]), 0)
                 e["punkte"] -= abzug
                 e["probleme"].append({
                     "modell": "Bindungsenergie",
@@ -1146,6 +1159,120 @@ class Kritiker(PlausibilitaetsModelle):
         return hueckel, pi_elektronen
 
 
+    # ==========================================================
+    # RINGSPANNUNG AUS MESSWERTEN
+    # ==========================================================
+    #
+    # Experimentelle Ringspannungsenergien (kcal/mol, Cycloalkane; aus
+    # Verbrennungswaermen, z.B. Schleyer / Wiberg). Alle Ringe eines
+    # Molekuels werden addiert (Kaefige: Cuban ~ 6 x Cyclobutan, gemessen
+    # 166) und gebremst (Saettigungskurve) in Punkte umgerechnet.
+
+    _RING_DEHNUNG = {
+        3: 27.5, 4: 26.5, 5: 6.2, 6: 0.0, 7: 6.2, 8: 9.7,
+        9: 12.6, 10: 12.4, 11: 11.3, 12: 4.1,
+    }
+    _RING_DEHNUNG_GROSS = 5.0            # Ringe ab 13 Atomen
+    _RING_DOPPEL_3 = 27.0                # Doppelbindung im Dreiring (Cyclopropen)
+    _RING_DOPPEL_4 = 4.0                 # ... im Vierring
+    _RING_MAX_ABZUG = 70
+    _RING_E0 = 50.0
+    _RING_SPANNUNGSFREI = ("S", "Si", "P")
+
+    def _ring_dehnungsenergie(self, ring_pfad, daten):
+        """Ringspannung dieses einen Rings in kcal/mol."""
+
+        n = len(ring_pfad)
+
+        elemente = {daten["atom_by_id"][a]["element"] for a in ring_pfad}
+
+        if n >= 5 and elemente <= set(self._RING_SPANNUNGSFREI):
+            return 0.0
+
+        aromatisch, _pi = self._ist_aromatisch(ring_pfad, daten)
+
+        if aromatisch and n >= 5:
+            return 0.0
+
+        energie = self._RING_DEHNUNG.get(n, self._RING_DEHNUNG_GROSS)
+
+        if n in (3, 4):
+
+            for i in range(n):
+
+                paar = frozenset([ring_pfad[i], ring_pfad[(i + 1) % n]])
+                bindung = daten["bindung_by_paar"].get(paar)
+
+                if bindung is not None and bindung["ordnung"] == 2:
+                    energie += self._RING_DOPPEL_3 if n == 3 else self._RING_DOPPEL_4
+
+        return energie
+
+    _BENSON_SCHWELLE_PRO_ATOM = 10.0   # kcal/mol je Schweratom
+    # 0 = nur protokollieren (Referenzset: Abzug traefe Ethin -17, Allen -6, Diacetylen -16)
+    _BENSON_MAX_ABZUG = 0
+    _BENSON_RING_IM_SCORE = False
+
+    def modell_benson(self, daten):
+        e = {"punkte": 0, "regeln": [], "probleme": [], "erklaerung": []}
+        ringe = daten.get("_ringe_cache")
+        if ringe is None:
+            ringe = self._alle_ringe(daten)
+            daten["_ringe_cache"] = ringe
+        r = benson.berechne(daten, ringe, lambda ring: self._ist_aromatisch(ring, daten)[0])
+        if r["schwere_atome"] == 0:
+            return e
+        if not r["anwendbar"]:
+            e["regeln"].append({"regel": "Benson nicht anwendbar", "grund": r["nicht_abgedeckt"][:3]})
+            return e
+        dhf = r["dhf_kcal"] if self._BENSON_RING_IM_SCORE else r["dhf_ohne_ring"]
+        pro_atom = dhf / r["schwere_atome"]
+        e["regeln"].append({"regel": "Benson dHf", "dhf_kcal_mol": r["dhf_kcal"],
+                            "ohne_ringkorrektur": r["dhf_ohne_ring"], "pro_schweratom": round(pro_atom, 2)})
+        if pro_atom > self._BENSON_SCHWELLE_PRO_ATOM:
+            abzug = min(round(pro_atom - self._BENSON_SCHWELLE_PRO_ATOM), self._BENSON_MAX_ABZUG)
+            if abzug > 0:
+                e["punkte"] -= abzug
+                e["probleme"].append({"modell": "Benson", "dhf_pro_schweratom": round(pro_atom, 2), "abzug": abzug})
+                e["erklaerung"].append(f"Bildungsenthalpie nach Benson ist mit {pro_atom:.1f} kcal/mol "
+                                       f"je Schweratom ungewoehnlich energiereich.")
+        return e
+
+    _ZERFALL_SCHWELLE_PRO_ATOM = 15.0   # kcal/mol je Schweratom (Referenzset: 2/66 stabil, 14/28 instabil darueber)
+    _ZERFALL_STEIGUNG = 0.5             # Punkte Abzug je kcal/mol ueber der Schwelle
+    # 0 = nur protokollieren. Zum Einschalten z.B. 10 setzen und eichung.py laufen lassen
+    # (Ethin, Tetrazol und Triazol lagen im Referenzset ueber der Schwelle).
+    _ZERFALL_MAX_ABZUG = 0
+
+    def modell_zerfall(self, daten):
+        e = {"punkte": 0, "regeln": [], "probleme": [], "erklaerung": []}
+        ringe = daten.get("_ringe_cache")
+        if ringe is None:
+            ringe = self._alle_ringe(daten)
+            daten["_ringe_cache"] = ringe
+        r = zerfall.berechne(daten, ringe, lambda ring: self._ist_aromatisch(ring, daten)[0])
+        if r["schwere_atome"] == 0:
+            return e
+        if not r["anwendbar"]:
+            e["regeln"].append({"regel": "Zerfallsenergie nicht anwendbar", "grund": r["nicht_abgedeckt"][:3]})
+            return e
+        pro_atom = r["dhf_kcal"] / r["schwere_atome"]
+        regel = {"regel": "Zerfallsenergie dHf (Bindungsenergien)", "dhf_kcal_mol": r["dhf_kcal"],
+                 "pro_schweratom": round(pro_atom, 2)}
+        if r["unsicher"]:
+            regel["unsichere_bindungen"] = r["unsicher"]
+        e["regeln"].append(regel)
+        if pro_atom > self._ZERFALL_SCHWELLE_PRO_ATOM:
+            abzug = min(round((pro_atom - self._ZERFALL_SCHWELLE_PRO_ATOM) * self._ZERFALL_STEIGUNG),
+                        self._ZERFALL_MAX_ABZUG)
+            if abzug > 0:
+                e["punkte"] -= abzug
+                e["probleme"].append({"modell": "Zerfallsenergie", "dhf_pro_schweratom": round(pro_atom, 2),
+                                      "abzug": abzug})
+                e["erklaerung"].append(f"Die Bindungen liefern {pro_atom:.1f} kcal/mol je Schweratom weniger "
+                                       f"Energie als die Elemente: das Molekuel zerfaellt unter Energiegewinn.")
+        return e
+
     def modell_ringe(self, daten):
 
         e = {"punkte": 0, "regeln": [], "probleme": [], "erklaerung": []}
@@ -1156,14 +1283,30 @@ class Kritiker(PlausibilitaetsModelle):
         if anzahl_ringe <= 0:
             return e
 
+        dehnung_summe = 0.0
+        abzug_bisher = 0
+
         for ring_pfad in self._alle_ringe(daten):
 
             groesse = len(ring_pfad)
 
-            abzug = self._RINGSPANNUNG.get(groesse)
+            energie = self._ring_dehnungsenergie(ring_pfad, daten)
 
-            if abzug is None:
-                abzug = -min(10 + (groesse - 8) * 2, 30)
+            if energie == 0 and groesse == 6:
+
+                abzug = 5
+
+            else:
+
+                dehnung_summe += energie
+
+                gesamt = round(
+                    self._RING_MAX_ABZUG
+                    * (1 - math.exp(-dehnung_summe / self._RING_E0))
+                )
+
+                abzug = -(gesamt - abzug_bisher)
+                abzug_bisher = gesamt
 
             e["punkte"] += abzug
 
@@ -1246,7 +1389,9 @@ class Kritiker(PlausibilitaetsModelle):
 
         for ring in self._alle_ringe(daten):
 
-            if self._ist_aromatisch(ring, daten):
+            aromatisch, _pi = self._ist_aromatisch(ring, daten)
+
+            if aromatisch:
 
                 n = len(ring)
 
@@ -1426,6 +1571,7 @@ class Kritiker(PlausibilitaetsModelle):
     # elektronegativen Partner (EN >= 3,0) kosten sie wenig; ohne (SH4,
     # PH5) bleibt es beim vollen Abzug.
     _HYPERVALENZ_BEKANNT = {"S": (4, 6), "P": (5,)}
+    _HYPERVALENZ_PARTNER = ("O", "F", "Cl", "Br", "I", "N", "S")
     _HYPERVALENZ_ABZUG_BEKANNT = 5
     _HYPERVALENZ_ABZUG = 20
     _HYPERVALENZ_ABZUG_OHNE_PARTNER = 40
@@ -1437,15 +1583,65 @@ class Kritiker(PlausibilitaetsModelle):
             for nachbar in daten["graph"][atom["id"]]:
 
                 element = daten["atom_by_id"][nachbar]["element"]
-                en = ELEMENT_INFO.get(element, {}).get("en")
 
-                if en is not None and en >= 3.0:
+                if element in self._HYPERVALENZ_PARTNER:
                     return self._HYPERVALENZ_ABZUG_BEKANNT
 
             # bekannter Zustand, aber ohne elektronegativen Partner (SH4, PH5)
             return self._HYPERVALENZ_ABZUG_OHNE_PARTNER
 
         return self._HYPERVALENZ_ABZUG
+
+    # ==========================================================
+    # MODELL — ANTIAROMATIZITAET (Vierring mit zwei konjugierten Doppelbindungen)
+    # ==========================================================
+    #
+    # Cyclobutadien (4 pi-Elektronen im planaren Ring) ist antiaromatisch
+    # und nur in der Matrix bei tiefer Temperatur nachgewiesen. Gemeint ist
+    # genau das Muster: Vierring, jedes Ringatom hat genau EINE
+    # Ringdoppelbindung. Abzug grob geschaetzt.
+
+    _ANTIAROMATISCH_ABZUG = 30
+
+    def modell_antiaromatisch(self, daten):
+
+        e = {"punkte": 0, "regeln": [], "probleme": [], "erklaerung": []}
+
+        m = daten["molekuel"]
+
+        if m["anzahl_bindungen"] - m["anzahl_atome"] + m["fragmente"] <= 0:
+            return e
+
+        for ring in self._alle_ringe(daten):
+
+            if len(ring) != 4:
+                continue
+
+            je_atom = {atom: 0 for atom in ring}
+
+            for i in range(4):
+
+                paar = frozenset([ring[i], ring[(i + 1) % 4]])
+                bindung = daten["bindung_by_paar"].get(paar)
+
+                if bindung is not None and bindung["ordnung"] == 2:
+                    je_atom[ring[i]] += 1
+                    je_atom[ring[(i + 1) % 4]] += 1
+
+            if all(anzahl == 1 for anzahl in je_atom.values()):
+
+                e["punkte"] -= self._ANTIAROMATISCH_ABZUG
+                e["probleme"].append({
+                    "modell": "Antiaromatizitaet",
+                    "ringgroesse": 4,
+                    "abzug": self._ANTIAROMATISCH_ABZUG
+                })
+                e["erklaerung"].append(
+                    "Vierring mit zwei konjugierten Doppelbindungen (4 pi-Elektronen) - "
+                    "antiaromatisch und sehr instabil."
+                )
+
+        return e
 
     def modell_hypervalenz(self, daten):
 

@@ -195,6 +195,48 @@ class PlausibilitaetsModelle:
     # also ist jede dieser Bindungen hier ungeschuetzt und reaktiv.
     # NICHT betroffen: P=O, P=N, P=S, S=O, S=N (stabil, haeufig).
 
+    # Mehrfachbindungen schwerer Elemente, die als Stammverbindung nur
+    # transient existieren (isolierbar nur mit sperrigen Resten).
+    _SCHWERE_MEHRFACH_ABZUG = 55
+    _DONOR_ELEMENTE = ("N", "O", "S")
+
+    def _element_id(self, bindung, element, daten):
+        """ID des Atoms mit diesem Element in der Bindung."""
+
+        for atom_id in (bindung["atom1"], bindung["atom2"]):
+            if daten["atom_by_id"][atom_id]["element"] == element:
+                return atom_id
+
+        return None
+
+    def _phosphaalken_abzug(self, bindung, daten):
+        """P=C: nur mit 3 Bindungen am P ein Phosphaalken (sperrige Reste
+        noetig); mit 5 ein Ylid/Phosphoran - dort wie bisher 10."""
+
+        p_id = self._element_id(bindung, "P", daten)
+
+        if daten["atom_by_id"][p_id]["used_valence"] <= 3:
+            return self._SCHWERE_MEHRFACH_ABZUG
+
+        return 10
+
+    def _thiocarbonyl_abzug(self, bindung, daten):
+        """C=S: Thioketone/-aldehyde sind transient; Thioharnstoff,
+        Thioamide, Thiocarbonate (Donor N/O/S am C) sind stabil."""
+
+        c_id = self._element_id(bindung, "C", daten)
+        s_id = self._element_id(bindung, "S", daten)
+
+        for nachbar in daten["graph"][c_id]:
+
+            if nachbar == s_id:
+                continue
+
+            if daten["atom_by_id"][nachbar]["element"] in self._DONOR_ELEMENTE:
+                return 0
+
+        return self._SCHWERE_MEHRFACH_ABZUG
+
     def modell_schwere_mehrfachbindungen(self, daten):
 
         e = {"punkte": 0, "regeln": [], "probleme": [], "erklaerung": []}
@@ -207,12 +249,17 @@ class PlausibilitaetsModelle:
             elemente = frozenset(b["elemente"])
 
             if "Si" in elemente:
-                abzug = 15
+                abzug = self._SCHWERE_MEHRFACH_ABZUG
             elif elemente == frozenset(["P"]):      # P=P
-                abzug = 15
+                abzug = self._SCHWERE_MEHRFACH_ABZUG
             elif elemente == frozenset(["P", "C"]):
-                abzug = 10
+                abzug = self._phosphaalken_abzug(b, daten)
+            elif elemente == frozenset(["S", "C"]):
+                abzug = self._thiocarbonyl_abzug(b, daten)
             else:
+                continue
+
+            if not abzug:
                 continue
 
             name = "=".join(b["elemente"]) if b["ordnung"] == 2 else "≡".join(b["elemente"])
