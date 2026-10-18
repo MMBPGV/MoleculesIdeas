@@ -1,1 +1,22 @@
+
+# Chemistry Lab — Python dependencies
+# Install with: python -m pip install -r requirements.txt
+
+# Molecular chemistry and numerical calculations
 rdkit
+numpy
+scipy
+
+# Neural-potential calculations
+torch
+torchani
+mace-torch
+ase
+
+# Supporting libraries
+h5py
+tqdm
+huggingface_hub
+
+# Learning-curve visualization
+matplotlib
